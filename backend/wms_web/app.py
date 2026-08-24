@@ -37,10 +37,17 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
         practice_id, action = parts[2], parts[3]
         body = self._body()
         actor = str(body.get("actor") or "operatore web")
+        actor_role = str(body.get("actor_role") or "OPERATORE").upper()
         if action == "tasks" and len(parts) == 6 and parts[5] == "complete":
             self._api(lambda: self.service.complete_task(practice_id, parts[4], actor))
         elif action == "validate" and len(parts) == 4:
-            self._api(lambda: self.service.validate(practice_id, actor))
+            self._api(
+                lambda: self.service.validate(
+                    practice_id,
+                    actor,
+                    actor_can_validate=actor_role == "RESPONSABILE",
+                )
+            )
         elif action == "close" and len(parts) == 4:
             self._api(lambda: self.service.close(practice_id, actor))
         else:

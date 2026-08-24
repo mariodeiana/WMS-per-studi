@@ -84,10 +84,10 @@ class PracticeService:
             complete_task(practice, task_code, actor)
             return serialize_practice(practice)
 
-    def validate(self, practice_id: str, actor: str) -> dict[str, object]:
+    def validate(self, practice_id: str, actor: str, actor_can_validate: bool) -> dict[str, object]:
         with self._lock:
             practice = self._find(practice_id)
-            validate_practice(practice, actor, actor_can_validate=True)
+            validate_practice(practice, actor, actor_can_validate=actor_can_validate)
             return serialize_practice(practice)
 
     def close(self, practice_id: str, actor: str) -> dict[str, object]:

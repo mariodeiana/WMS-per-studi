@@ -18,6 +18,6 @@ function render(practice) {
   $("#validate").disabled=practice.status!=="DA_VALIDARE"; $("#close").disabled=practice.status!=="VALIDATA";
   $("#audit").innerHTML=practice.audit.slice(0,8).map(event=>`<div class="event"><strong>${event.event_type.replaceAll('_',' ')}</strong><span>${event.actor} · ${new Date(event.at).toLocaleString('it-IT')}</span></div>`).join("");
 }
-async function act(path, actor) { try { $("#message").hidden=true; render(await request(`/api/practices/${id}${path}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor})})); } catch(error) { $("#message").textContent=error.message; $("#message").hidden=false; } }
-$("#validate").onclick=()=>act("/validate","responsabile"); $("#close").onclick=()=>act("/close","responsabile");
+async function act(path, actor, actorRole="OPERATORE") { try { $("#message").hidden=true; render(await request(`/api/practices/${id}${path}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor,actor_role:actorRole})})); } catch(error) { $("#message").textContent=error.message; $("#message").hidden=false; } }
+$("#validate").onclick=()=>act("/validate","responsabile","RESPONSABILE"); $("#close").onclick=()=>act("/close","responsabile","RESPONSABILE");
 request(`/api/practices/${id}`).then(render).catch(error=>{ $("#message").textContent=error.message; $("#message").hidden=false; });

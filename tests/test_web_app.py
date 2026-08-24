@@ -29,6 +29,9 @@ class WebAppTest(unittest.TestCase):
         with urlopen(request) as response:
             return response.status, response.read(), response.headers.get_content_type()
 
+    def setUp(self):
+        WMSRequestHandler.service = PracticeService()
+
     def test_serves_practice_page_and_health(self):
         status, page, content_type = self.request("/")
         self.assertEqual((status, content_type), (200, "text/html"))
@@ -41,15 +44,37 @@ class WebAppTest(unittest.TestCase):
             path = f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-{index:02}/complete"
             _, body, _ = self.request(path, "POST", {"actor": "operatore"})
         self.assertEqual(json.loads(body)["status"], "DA_VALIDARE")
-        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/validate", "POST", {"actor": "responsabile"})
+        _, body, _ = self.request(
+            f"/api/practices/{DEMO_PRACTICE_ID}/validate",
+            "POST",
+            {"actor": "responsabile", "actor_role": "RESPONSABILE"},
+        )
         self.assertEqual(json.loads(body)["status"], "VALIDATA")
         _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "responsabile"})
         self.assertEqual(json.loads(body)["status"], "CHIUSA")
+
+    def test_validation_requires_responsabile_role(self):
+        for index in range(1, 8):
+            path = f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-{index:02}/complete"
+            self.request(path, "POST", {"actor": "operatore"})
+
+        with self.assertRaises(HTTPError) as context:
+            self.request(
+                f"/api/practices/{DEMO_PRACTICE_ID}/validate",
+                "POST",
+                {"actor": "operatore", "actor_role": "OPERATORE"},
+            )
+
+        self.assertEqual(context.exception.code, 409)
+        context.exception.close()
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
+        self.assertEqual(json.loads(body)["status"], "DA_VALIDARE")
 
     def test_unknown_practice_returns_404(self):
         with self.assertRaises(HTTPError) as context:
             self.request("/api/practices/UNKNOWN")
         self.assertEqual(context.exception.code, 404)
+        context.exception.close()
 
 
 if __name__ == "__main__":
