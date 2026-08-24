@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scheda pratica LIPE_TRIM · WMS</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar"><span class="brand">WMS</span><span>Studio workspace</span><span class="environment">Ambiente locale</span></header>
+  <main>
+    <nav class="crumb">Pratiche <span>/</span> <strong id="practice-id">…</strong></nav>
+    <section class="hero">
+      <div><p class="eyebrow">Scheda pratica</p><h1>Comunicazione LIPE</h1><p class="subtitle">Liquidazioni periodiche IVA · <span id="period">…</span></p></div>
+      <div class="status" id="status">Caricamento…</div>
+    </section>
+    <div id="message" role="alert" hidden></div>
+    <section class="facts card">
+      <div><span>Cliente</span><strong id="client">…</strong></div><div><span>Scadenza</span><strong id="due">…</strong></div>
+      <div><span>Tipo pratica</span><strong>LIPE_TRIM</strong></div><div><span>Validazione</span><strong>Obbligatoria</strong></div>
+    </section>
+    <div class="layout">
+      <section class="card tasks"><div class="section-title"><div><p class="eyebrow">Workflow operativo</p><h2>Attività</h2></div><strong id="progress">0 / 0</strong></div><div class="bar"><i id="bar"></i></div><div id="tasks"></div></section>
+      <aside><section class="card actions"><p class="eyebrow">Azioni pratica</p><h2>Avanzamento</h2><p>Completa tutte le attività, valida e chiudi la pratica.</p><button id="validate" disabled>Valida pratica</button><button id="close" class="secondary" disabled>Chiudi pratica</button></section>
+      <section class="card audit"><p class="eyebrow">Tracciabilità</p><h2>Audit log</h2><div id="audit"></div></section></aside>
+    </div>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

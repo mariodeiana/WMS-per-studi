@@ -1,0 +1,56 @@
+import json
+import threading
+import unittest
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+from backend.wms_web.app import WMSRequestHandler, create_server
+from backend.wms_web.service import DEMO_PRACTICE_ID, PracticeService
+
+
+class WebAppTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        WMSRequestHandler.service = PracticeService()
+        cls.server = create_server(port=0)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.url = f"http://127.0.0.1:{cls.server.server_port}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join()
+
+    def request(self, path, method="GET", body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        request = Request(self.url + path, data=data, method=method, headers={"Content-Type": "application/json"})
+        with urlopen(request) as response:
+            return response.status, response.read(), response.headers.get_content_type()
+
+    def test_serves_practice_page_and_health(self):
+        status, page, content_type = self.request("/")
+        self.assertEqual((status, content_type), (200, "text/html"))
+        self.assertIn(b"Scheda pratica LIPE_TRIM", page)
+        status, body, _ = self.request("/api/health")
+        self.assertEqual(json.loads(body), {"status": "ok"})
+
+    def test_api_drives_complete_workflow(self):
+        for index in range(1, 8):
+            path = f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-{index:02}/complete"
+            _, body, _ = self.request(path, "POST", {"actor": "operatore"})
+        self.assertEqual(json.loads(body)["status"], "DA_VALIDARE")
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/validate", "POST", {"actor": "responsabile"})
+        self.assertEqual(json.loads(body)["status"], "VALIDATA")
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "responsabile"})
+        self.assertEqual(json.loads(body)["status"], "CHIUSA")
+
+    def test_unknown_practice_returns_404(self):
+        with self.assertRaises(HTTPError) as context:
+            self.request("/api/practices/UNKNOWN")
+        self.assertEqual(context.exception.code, 404)
+
+
+if __name__ == "__main__":
+    unittest.main()
