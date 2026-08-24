@@ -4,70 +4,85 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from wms_core.models import Practice, PracticeStatus
+from wms_core.models import Practice, PracticeStatus, Task, UserRole
 from wms_core.templates import build_lipe_trim_tasks
-from wms_core.workflow import WorkflowError, close_practice, complete_task, reopen_task, validate_practice
+from wms_core.workflow import WorkflowError, assign_task, close_practice, complete_task, reopen_task, validate_practice
 
 
 class LipeWorkflowTest(unittest.TestCase):
     def build_practice(self) -> Practice:
-        return Practice(
-            id="P-2026-0001",
-            practice_type_code="LIPE_TRIM",
-            client_id="CLIENT-001",
-            period_start="2026-04-01",
-            period_end="2026-06-30",
-            due_date="2026-09-30",
+        practice = Practice(
+            id="P-2026-0001", practice_type_code="LIPE_TRIM", client_id="CLIENT-001",
+            period_start="2026-04-01", period_end="2026-06-30", due_date="2026-09-30",
             tasks=build_lipe_trim_tasks(),
         )
+        for index, task in enumerate(practice.tasks):
+            assign_task(practice, task.code, "anna" if index % 2 == 0 else "luca", "manager", UserRole.MANAGER)
+        return practice
 
-    def test_end_to_end_lipe(self):
+    def complete_all_out_of_order(self, practice: Practice) -> None:
+        for index in (6, 0, 4, 1, 5, 2, 3):
+            task = practice.tasks[index]
+            complete_task(practice, task.code, task.assignee, UserRole.OPERATORE)
+
+    def test_out_of_order_end_to_end_with_roles_and_audit(self):
         practice = self.build_practice()
-
-        for task in practice.tasks:
-            complete_task(practice, task.code, actor="operatore")
-
+        self.complete_all_out_of_order(practice)
         self.assertEqual(practice.status, PracticeStatus.DA_VALIDARE)
-
-        validate_practice(practice, actor="responsabile", actor_can_validate=True)
-        self.assertEqual(practice.status, PracticeStatus.VALIDATA)
-
-        close_practice(practice, actor="responsabile")
+        validate_practice(practice, "valeria", UserRole.VALIDATORE)
+        close_practice(practice, "manager", UserRole.MANAGER)
         self.assertEqual(practice.status, PracticeStatus.CHIUSA)
-        self.assertGreaterEqual(len(practice.audit), 12)
+        events = [event.event_type for event in practice.audit]
+        self.assertIn("TASK_ASSIGNED", events)
+        self.assertIn("PRACTICE_VALIDATED", events)
+        self.assertIn("PRACTICE_CLOSED", events)
 
-    def test_unauthorized_validation_is_rejected(self):
-        practice = self.build_practice()
-        for task in practice.tasks:
-            complete_task(practice, task.code, actor="operatore")
-
-        with self.assertRaises(WorkflowError):
-            validate_practice(practice, actor="operatore", actor_can_validate=False)
-
-    def test_early_close_is_rejected(self):
+    def test_only_assignee_operator_can_complete(self):
         practice = self.build_practice()
         with self.assertRaises(WorkflowError):
-            close_practice(practice, actor="responsabile")
+            complete_task(practice, "LIPE-01", "luca", UserRole.OPERATORE)
+        with self.assertRaises(WorkflowError):
+            complete_task(practice, "LIPE-01", "anna", UserRole.MANAGER)
 
-    def test_completed_task_can_be_reopened_before_validation(self):
+    def test_explicit_dependency_is_enforced_but_graphic_order_is_not(self):
+        practice = Practice("P", "GENERIC", "C", "2026-01-01", "2026-01-31", "2026-02-01", tasks=[
+            Task("FIRST", "First", assignee="anna"),
+            Task("SECOND", "Second", assignee="anna", depends_on=("FIRST",)),
+            Task("INDEPENDENT", "Independent", assignee="anna"),
+        ])
+        complete_task(practice, "INDEPENDENT", "anna", UserRole.OPERATORE)
+        with self.assertRaises(WorkflowError):
+            complete_task(practice, "SECOND", "anna", UserRole.OPERATORE)
+
+    def test_executor_cannot_validate_same_practice(self):
         practice = self.build_practice()
-        for task in practice.tasks:
-            complete_task(practice, task.code, actor="operatore")
+        self.complete_all_out_of_order(practice)
+        with self.assertRaises(WorkflowError):
+            validate_practice(practice, "anna", UserRole.VALIDATORE)
 
-        reopen_task(practice, "LIPE-03", actor="operatore")
+    def test_closure_is_manager_only(self):
+        practice = self.build_practice()
+        self.complete_all_out_of_order(practice)
+        validate_practice(practice, "valeria", UserRole.VALIDATORE)
+        with self.assertRaises(WorkflowError):
+            close_practice(practice, "valeria", UserRole.VALIDATORE)
 
+    def test_manager_reopens_and_clears_completion_author(self):
+        practice = self.build_practice()
+        self.complete_all_out_of_order(practice)
+        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER)
         self.assertEqual(practice.status, PracticeStatus.IN_LAVORAZIONE)
-        self.assertEqual(practice.tasks[2].status.value, "IN_LAVORAZIONE")
+        self.assertIsNone(practice.tasks[2].completed_by)
         self.assertEqual(practice.audit[-2].event_type, "TASK_REOPENED")
 
-    def test_task_cannot_be_reopened_after_validation(self):
+    def test_reopening_does_not_erase_separation_of_duties_history(self):
         practice = self.build_practice()
-        for task in practice.tasks:
-            complete_task(practice, task.code, actor="operatore")
-        validate_practice(practice, actor="responsabile", actor_can_validate=True)
-
+        self.complete_all_out_of_order(practice)
+        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER)
+        assign_task(practice, "LIPE-03", "luca", "manager", UserRole.MANAGER)
+        complete_task(practice, "LIPE-03", "luca", UserRole.OPERATORE)
         with self.assertRaises(WorkflowError):
-            reopen_task(practice, "LIPE-03", actor="operatore")
+            validate_practice(practice, "anna", UserRole.VALIDATORE)
 
 
 if __name__ == "__main__":

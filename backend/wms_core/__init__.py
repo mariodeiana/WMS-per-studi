@@ -1,18 +1,18 @@
-"""WMS Core domain package."""
+"""Management-system-agnostic WMS domain package."""
 
-from .models import Practice, PracticeStatus, Task, TaskStatus
-from .workflow import WorkflowError, start_practice, complete_task, reopen_task, request_validation, validate_practice, close_practice
+from .models import Practice, PracticeStatus, Task, TaskStatus, UserRole
+from .workflow import (
+    WorkflowError,
+    assign_task,
+    close_practice,
+    complete_task,
+    reopen_task,
+    start_practice,
+    validate_practice,
+)
 
 __all__ = [
-    "Practice",
-    "PracticeStatus",
-    "Task",
-    "TaskStatus",
-    "WorkflowError",
-    "start_practice",
-    "complete_task",
-    "reopen_task",
-    "request_validation",
+    "Practice", "PracticeStatus", "Task", "TaskStatus", "UserRole", "WorkflowError",
+    "assign_task", "close_practice", "complete_task", "reopen_task", "start_practice",
     "validate_practice",
-    "close_practice",
 ]

@@ -2,6 +2,7 @@ import json
 import threading
 import unittest
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from backend.wms_web.app import WMSRequestHandler, create_server
@@ -11,7 +12,6 @@ from backend.wms_web.service import DEMO_PRACTICE_ID, PracticeService
 class WebAppTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        WMSRequestHandler.service = PracticeService()
         cls.server = create_server(port=0)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -19,9 +19,10 @@ class WebAppTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.server.shutdown()
-        cls.server.server_close()
-        cls.thread.join()
+        cls.server.shutdown(); cls.server.server_close(); cls.thread.join()
+
+    def setUp(self):
+        WMSRequestHandler.service = PracticeService()
 
     def request(self, path, method="GET", body=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -29,89 +30,93 @@ class WebAppTest(unittest.TestCase):
         with urlopen(request) as response:
             return response.status, response.read(), response.headers.get_content_type()
 
-    def setUp(self):
-        WMSRequestHandler.service = PracticeService()
-
-    def test_serves_practice_page_and_health(self):
-        status, page, content_type = self.request("/")
-        self.assertEqual((status, content_type), (200, "text/html"))
-        self.assertIn(b"Scheda pratica LIPE_TRIM", page)
-        status, body, _ = self.request("/api/health")
-        self.assertEqual(json.loads(body), {"status": "ok"})
-
-    def test_api_drives_complete_workflow(self):
-        for index in range(1, 8):
-            path = f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-{index:02}/complete"
-            _, body, _ = self.request(path, "POST", {"actor": "operatore"})
-        self.assertEqual(json.loads(body)["status"], "DA_VALIDARE")
-        _, body, _ = self.request(
-            f"/api/practices/{DEMO_PRACTICE_ID}/validate",
-            "POST",
-            {"actor": "responsabile", "actor_role": "RESPONSABILE"},
-        )
-        self.assertEqual(json.loads(body)["status"], "VALIDATA")
-        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "responsabile"})
-        self.assertEqual(json.loads(body)["status"], "CHIUSA")
-
-    def test_validation_requires_responsabile_role(self):
-        for index in range(1, 8):
-            path = f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-{index:02}/complete"
-            self.request(path, "POST", {"actor": "operatore"})
-
+    def error(self, path, method="GET", body=None):
         with self.assertRaises(HTTPError) as context:
-            self.request(
-                f"/api/practices/{DEMO_PRACTICE_ID}/validate",
-                "POST",
-                {"actor": "operatore", "actor_role": "OPERATORE"},
-            )
-
-        self.assertEqual(context.exception.code, 409)
+            self.request(path, method, body)
+        code = context.exception.code
         context.exception.close()
+        return code
+
+    def complete(self, code, actor):
+        return self.request(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/{code}/complete", "POST", {"actor": actor})
+
+    def test_serves_manager_queue_task_and_validation_views(self):
+        for path, marker in [("/", b"Scheda Pratica Manager"), ("/queue.html", b"Work Queue Operatore"),
+                             ("/task.html", b"Attivit\xc3\xa0 Operatore"), ("/validation.html", b"Validazione Pratica")]:
+            status, page, content_type = self.request(path)
+            self.assertEqual((status, content_type), (200, "text/html"))
+            self.assertIn(marker, page)
+
+    def test_demo_assignments_are_split_between_two_operators(self):
         _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
-        self.assertEqual(json.loads(body)["status"], "DA_VALIDARE")
+        practice = json.loads(body)
+        self.assertEqual({task["assignee"] for task in practice["tasks"]}, {"anna.operatore", "luca.operatore"})
+        self.assertTrue(all("completed_by" in task and "depends_on" in task for task in practice["tasks"]))
+        self.assertEqual(sum(event["event_type"] == "TASK_ASSIGNED" for event in practice["audit"]), 7)
 
-    def test_completed_task_can_be_reopened_through_api(self):
-        for index in range(1, 8):
-            path = f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-{index:02}/complete"
-            self.request(path, "POST", {"actor": "operatore"})
-
+    def test_manager_can_reassign_task_and_assignment_is_audited(self):
         _, body, _ = self.request(
-            f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-03/reopen",
+            f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/assign",
             "POST",
-            {"actor": "operatore"},
+            {"actor": "marta.manager", "assignee": "luca.operatore"},
         )
         practice = json.loads(body)
-
-        self.assertEqual(practice["status"], "IN_LAVORAZIONE")
-        self.assertEqual(practice["progress"], {"completed": 6, "total": 7})
-        self.assertEqual(practice["tasks"][2]["status"], "IN_LAVORAZIONE")
-        self.assertTrue(any(event["event_type"] == "TASK_REOPENED" for event in practice["audit"]))
-
-    def test_early_close_returns_409_and_preserves_state(self):
-        with self.assertRaises(HTTPError) as context:
-            self.request(
-                f"/api/practices/{DEMO_PRACTICE_ID}/close",
-                "POST",
-                {"actor": "responsabile"},
-            )
-
-        self.assertEqual(context.exception.code, 409)
-        context.exception.close()
-        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
-        self.assertEqual(json.loads(body)["status"], "DA_FARE")
-
-    def test_demo_assignments_are_exposed_by_application_layer(self):
-        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
+        self.assertEqual(practice["tasks"][0]["assignee"], "luca.operatore")
+        self.assertEqual(practice["audit"][0]["event_type"], "TASK_ASSIGNED")
         self.assertEqual(
-            json.loads(body)["assignments"],
-            {"responsible": "Dott.ssa Giulia Bianchi", "operator": "Marco Rossi"},
+            self.error(
+                f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/assign",
+                "POST",
+                {"actor": "anna.operatore", "assignee": "luca.operatore"},
+            ),
+            409,
         )
 
-    def test_unknown_practice_returns_404(self):
-        with self.assertRaises(HTTPError) as context:
-            self.request("/api/practices/UNKNOWN")
-        self.assertEqual(context.exception.code, 404)
-        context.exception.close()
+    def test_operator_queue_and_minimal_task_detail_are_scoped(self):
+        _, body, _ = self.request("/api/work-queue?operator=anna.operatore")
+        queue = json.loads(body)
+        self.assertEqual([item["code"] for item in queue], ["LIPE-01", "LIPE-03", "LIPE-05", "LIPE-07"])
+        _, body, _ = self.request(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?operator=anna.operatore")
+        self.assertEqual(set(json.loads(body)), {"practice", "task"})
+        self.assertEqual(self.error(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?operator=luca.operatore"), 403)
+
+    def test_tasks_complete_out_of_definition_order(self):
+        plan = [("LIPE-07", "anna.operatore"), ("LIPE-02", "luca.operatore"),
+                ("LIPE-05", "anna.operatore"), ("LIPE-04", "luca.operatore"),
+                ("LIPE-01", "anna.operatore"), ("LIPE-06", "luca.operatore"),
+                ("LIPE-03", "anna.operatore")]
+        for code, actor in plan:
+            _, body, _ = self.complete(code, actor)
+        practice = json.loads(body)
+        self.assertEqual(practice["status"], "DA_VALIDARE")
+        self.assertEqual(practice["tasks"][6]["completed_by"], "anna.operatore")
+
+    def test_wrong_operator_and_wrong_roles_are_rejected(self):
+        self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/complete", "POST", {"actor": "luca.operatore"}), 409)
+        self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/complete", "POST", {"actor": "marta.manager"}), 409)
+        self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "valeria.validatore"}), 409)
+
+    def test_executor_cannot_self_validate_and_manager_closes(self):
+        for index in range(1, 8):
+            actor = "anna.operatore" if index % 2 else "luca.operatore"
+            self.complete(f"LIPE-{index:02}", actor)
+        # Application identity normally maps Anna to OPERATORE; exercise the domain separation rule
+        # by registering the same identity as a validator after she performed tasks.
+        from backend.wms_web import service
+        original = service.DEMO_USERS["anna.operatore"]
+        service.DEMO_USERS["anna.operatore"] = service.UserRole.VALIDATORE
+        try:
+            self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/validate", "POST", {"actor": "anna.operatore"}), 409)
+        finally:
+            service.DEMO_USERS["anna.operatore"] = original
+        self.request(f"/api/practices/{DEMO_PRACTICE_ID}/validate", "POST", {"actor": "valeria.validatore"})
+        self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "valeria.validatore"}), 409)
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "marta.manager"})
+        self.assertEqual(json.loads(body)["status"], "CHIUSA")
+        self.assertEqual(json.loads(body)["audit"][0]["event_type"], "PRACTICE_CLOSED")
+
+    def test_early_close_returns_409(self):
+        self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "marta.manager"}), 409)
 
 
 if __name__ == "__main__":

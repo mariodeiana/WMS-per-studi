@@ -20,6 +20,9 @@ Istanza concreta di un Tipo di pratica per un Cliente e un periodo/evento.
 ### Task
 Singola attività operativa all'interno di una Pratica.
 
+In v0.2 ogni Task espone assegnatario, autore del completamento ed eventuali
+dipendenze esplicite. L'ordine nel template non costituisce una dipendenza.
+
 ### Template di task
 Definizione dei Task che devono essere generati quando nasce una Pratica.
 
@@ -52,3 +55,6 @@ Esempi di `system`: GIS, TEAMSYSTEM, ZUCCHETTI, SISTEMI.
 5. Se il Tipo di pratica richiede validazione, la Pratica passa a `DA_VALIDARE`.
 6. Solo un ruolo autorizzato può validare.
 7. Ogni cambio di stato produce un Audit Event.
+8. Solo l'operatore assegnatario può completare un Task.
+9. Chi ha completato almeno un Task della Pratica non può validarla.
+10. Il ruolo VALIDATORE valida e il ruolo MANAGER assegna, riapre e chiude.

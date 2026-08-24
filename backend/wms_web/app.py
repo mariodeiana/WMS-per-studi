@@ -6,7 +6,7 @@ import mimetypes
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from backend.wms_core.workflow import WorkflowError
 from backend.wms_web.service import DEMO_PRACTICE_ID, PracticeService
@@ -19,9 +19,23 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
     service = PracticeService()
 
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/api/health":
             self._json({"status": "ok"})
+            return
+        if path == "/api/work-queue":
+            operator = parse_qs(parsed.query).get("operator", [""])[0]
+            self._api(lambda: self.service.work_queue(operator))
+            return
+        task_prefix = "/api/tasks/"
+        if path.startswith(task_prefix):
+            parts = [unquote(part) for part in path[len(task_prefix) :].split("/")]
+            operator = parse_qs(parsed.query).get("operator", [""])[0]
+            if len(parts) == 2:
+                self._api(lambda: self.service.task_detail(parts[0], parts[1], operator))
+            else:
+                self._json({"error": "Endpoint inesistente"}, HTTPStatus.NOT_FOUND)
             return
         prefix = "/api/practices/"
         if path.startswith(prefix):
@@ -37,19 +51,15 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
         practice_id, action = parts[2], parts[3]
         body = self._body()
         actor = str(body.get("actor") or "operatore web")
-        actor_role = str(body.get("actor_role") or "OPERATORE").upper()
         if action == "tasks" and len(parts) == 6 and parts[5] == "complete":
             self._api(lambda: self.service.complete_task(practice_id, parts[4], actor))
+        elif action == "tasks" and len(parts) == 6 and parts[5] == "assign":
+            assignee = str(body.get("assignee") or "")
+            self._api(lambda: self.service.assign_task(practice_id, parts[4], assignee, actor))
         elif action == "tasks" and len(parts) == 6 and parts[5] == "reopen":
             self._api(lambda: self.service.reopen_task(practice_id, parts[4], actor))
         elif action == "validate" and len(parts) == 4:
-            self._api(
-                lambda: self.service.validate(
-                    practice_id,
-                    actor,
-                    actor_can_validate=actor_role == "RESPONSABILE",
-                )
-            )
+            self._api(lambda: self.service.validate(practice_id, actor))
         elif action == "close" and len(parts) == 4:
             self._api(lambda: self.service.close(practice_id, actor))
         else:
@@ -62,6 +72,8 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
             self._json({"error": str(error.args[0])}, HTTPStatus.NOT_FOUND)
         except WorkflowError as error:
             self._json({"error": str(error)}, HTTPStatus.CONFLICT)
+        except PermissionError as error:
+            self._json({"error": str(error)}, HTTPStatus.FORBIDDEN)
 
     def _body(self) -> dict[str, object]:
         try:
