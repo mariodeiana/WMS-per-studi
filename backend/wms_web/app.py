@@ -40,6 +40,8 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
         actor_role = str(body.get("actor_role") or "OPERATORE").upper()
         if action == "tasks" and len(parts) == 6 and parts[5] == "complete":
             self._api(lambda: self.service.complete_task(practice_id, parts[4], actor))
+        elif action == "tasks" and len(parts) == 6 and parts[5] == "reopen":
+            self._api(lambda: self.service.reopen_task(practice_id, parts[4], actor))
         elif action == "validate" and len(parts) == 4:
             self._api(
                 lambda: self.service.validate(

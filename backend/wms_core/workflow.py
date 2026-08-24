@@ -41,6 +41,23 @@ def complete_task(practice: Practice, task_code: str, actor: str) -> None:
             _transition(practice, PracticeStatus.DA_VALIDARE, actor)
 
 
+def reopen_task(practice: Practice, task_code: str, actor: str) -> None:
+    """Reopen a completed task while the practice is not yet validated."""
+    if practice.status not in {PracticeStatus.IN_LAVORAZIONE, PracticeStatus.DA_VALIDARE}:
+        raise WorkflowError("I task possono essere riaperti solo prima della validazione")
+
+    task = next((item for item in practice.tasks if item.code == task_code), None)
+    if task is None:
+        raise WorkflowError(f"Task inesistente: {task_code}")
+    if task.status != TaskStatus.COMPLETATO:
+        raise WorkflowError("Solo un task completato può essere riaperto")
+
+    task.status = TaskStatus.IN_LAVORAZIONE
+    practice.record("TASK_REOPENED", actor, task_code=task.code)
+    if practice.status == PracticeStatus.DA_VALIDARE:
+        _transition(practice, PracticeStatus.IN_LAVORAZIONE, actor)
+
+
 def request_validation(practice: Practice, actor: str) -> None:
     if practice.status != PracticeStatus.COMPLETATA:
         raise WorkflowError("La validazione può essere richiesta solo da COMPLETATA")

@@ -70,6 +70,43 @@ class WebAppTest(unittest.TestCase):
         _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
         self.assertEqual(json.loads(body)["status"], "DA_VALIDARE")
 
+    def test_completed_task_can_be_reopened_through_api(self):
+        for index in range(1, 8):
+            path = f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-{index:02}/complete"
+            self.request(path, "POST", {"actor": "operatore"})
+
+        _, body, _ = self.request(
+            f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-03/reopen",
+            "POST",
+            {"actor": "operatore"},
+        )
+        practice = json.loads(body)
+
+        self.assertEqual(practice["status"], "IN_LAVORAZIONE")
+        self.assertEqual(practice["progress"], {"completed": 6, "total": 7})
+        self.assertEqual(practice["tasks"][2]["status"], "IN_LAVORAZIONE")
+        self.assertTrue(any(event["event_type"] == "TASK_REOPENED" for event in practice["audit"]))
+
+    def test_early_close_returns_409_and_preserves_state(self):
+        with self.assertRaises(HTTPError) as context:
+            self.request(
+                f"/api/practices/{DEMO_PRACTICE_ID}/close",
+                "POST",
+                {"actor": "responsabile"},
+            )
+
+        self.assertEqual(context.exception.code, 409)
+        context.exception.close()
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
+        self.assertEqual(json.loads(body)["status"], "DA_FARE")
+
+    def test_demo_assignments_are_exposed_by_application_layer(self):
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
+        self.assertEqual(
+            json.loads(body)["assignments"],
+            {"responsible": "Dott.ssa Giulia Bianchi", "operator": "Marco Rossi"},
+        )
+
     def test_unknown_practice_returns_404(self):
         with self.assertRaises(HTTPError) as context:
             self.request("/api/practices/UNKNOWN")

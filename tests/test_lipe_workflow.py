@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from wms_core.models import Practice, PracticeStatus
 from wms_core.templates import build_lipe_trim_tasks
-from wms_core.workflow import WorkflowError, close_practice, complete_task, validate_practice
+from wms_core.workflow import WorkflowError, close_practice, complete_task, reopen_task, validate_practice
 
 
 class LipeWorkflowTest(unittest.TestCase):
@@ -48,6 +48,26 @@ class LipeWorkflowTest(unittest.TestCase):
         practice = self.build_practice()
         with self.assertRaises(WorkflowError):
             close_practice(practice, actor="responsabile")
+
+    def test_completed_task_can_be_reopened_before_validation(self):
+        practice = self.build_practice()
+        for task in practice.tasks:
+            complete_task(practice, task.code, actor="operatore")
+
+        reopen_task(practice, "LIPE-03", actor="operatore")
+
+        self.assertEqual(practice.status, PracticeStatus.IN_LAVORAZIONE)
+        self.assertEqual(practice.tasks[2].status.value, "IN_LAVORAZIONE")
+        self.assertEqual(practice.audit[-2].event_type, "TASK_REOPENED")
+
+    def test_task_cannot_be_reopened_after_validation(self):
+        practice = self.build_practice()
+        for task in practice.tasks:
+            complete_task(practice, task.code, actor="operatore")
+        validate_practice(practice, actor="responsabile", actor_can_validate=True)
+
+        with self.assertRaises(WorkflowError):
+            reopen_task(practice, "LIPE-03", actor="operatore")
 
 
 if __name__ == "__main__":

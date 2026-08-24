@@ -5,7 +5,7 @@ from threading import RLock
 
 from backend.wms_core.models import AuditEvent, Practice, Task
 from backend.wms_core.templates import build_lipe_trim_tasks
-from backend.wms_core.workflow import close_practice, complete_task, validate_practice
+from backend.wms_core.workflow import close_practice, complete_task, reopen_task, validate_practice
 
 
 DEMO_PRACTICE_ID = "P-2026-LIPE-001"
@@ -48,7 +48,7 @@ def _event(event: AuditEvent) -> dict[str, object]:
     }
 
 
-def serialize_practice(practice: Practice) -> dict[str, object]:
+def serialize_practice(practice: Practice, assignments: dict[str, str] | None = None) -> dict[str, object]:
     completed = sum(task.status.value == "COMPLETATO" for task in practice.tasks)
     return {
         "id": practice.id,
@@ -64,6 +64,7 @@ def serialize_practice(practice: Practice) -> dict[str, object]:
         "audit": [_event(event) for event in reversed(practice.audit)],
         "validated_by": practice.validated_by,
         "validated_at": _date(practice.validated_at),
+        "assignments": assignments or {},
     }
 
 
@@ -73,28 +74,44 @@ class PracticeService:
     def __init__(self) -> None:
         self._lock = RLock()
         self._practices = {DEMO_PRACTICE_ID: build_demo_practice()}
+        # Demo presentation data belongs to the application layer, not WMS Core.
+        self._assignments = {
+            DEMO_PRACTICE_ID: {
+                "responsible": "Dott.ssa Giulia Bianchi",
+                "operator": "Marco Rossi",
+            }
+        }
 
     def get(self, practice_id: str) -> dict[str, object]:
         with self._lock:
-            return serialize_practice(self._find(practice_id))
+            return self._serialize(self._find(practice_id))
 
     def complete_task(self, practice_id: str, task_code: str, actor: str) -> dict[str, object]:
         with self._lock:
             practice = self._find(practice_id)
             complete_task(practice, task_code, actor)
-            return serialize_practice(practice)
+            return self._serialize(practice)
+
+    def reopen_task(self, practice_id: str, task_code: str, actor: str) -> dict[str, object]:
+        with self._lock:
+            practice = self._find(practice_id)
+            reopen_task(practice, task_code, actor)
+            return self._serialize(practice)
 
     def validate(self, practice_id: str, actor: str, actor_can_validate: bool) -> dict[str, object]:
         with self._lock:
             practice = self._find(practice_id)
             validate_practice(practice, actor, actor_can_validate=actor_can_validate)
-            return serialize_practice(practice)
+            return self._serialize(practice)
 
     def close(self, practice_id: str, actor: str) -> dict[str, object]:
         with self._lock:
             practice = self._find(practice_id)
             close_practice(practice, actor)
-            return serialize_practice(practice)
+            return self._serialize(practice)
+
+    def _serialize(self, practice: Practice) -> dict[str, object]:
+        return serialize_practice(practice, self._assignments.get(practice.id))
 
     def _find(self, practice_id: str) -> Practice:
         try:

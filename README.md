@@ -29,7 +29,8 @@ python3 -m backend.wms_web.app
 ```
 
 Aprire quindi **http://127.0.0.1:8000/** nel browser. La pagina mostra la Scheda
-Pratica `LIPE_TRIM` e consente di completare i sette task, validare la pratica,
+Pratica `LIPE_TRIM`, il responsabile e l'operatore assegnati. Consente di
+completare e riaprire i sette task prima della validazione, validare la pratica,
 chiuderla e consultare l'audit log. Per usare un'altra porta:
 
 ```bash
