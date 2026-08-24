@@ -29,6 +29,13 @@ Documento collegato alla Pratica e/o a un Task.
 ### Audit Event
 Evento immutabile che registra creazione, assegnazione, cambio stato, completamento, validazione e altre operazioni significative.
 
+### Work Result ed Evidence (v0.3)
+Ogni completamento, validazione e chiusura produce un `WorkResult` con autore,
+ruolo, data, outcome, nota, riferimenti alla pratica/task ed evidenze. Le evidenze
+mantengono origine (`TASK`, `VALIDATION`, `CLOSURE`), autore, data e riferimento al
+contenuto. La loro aggregazione costituisce il fascicolo della pratica, separato
+dagli eventi di audit che descrivono soltanto ciò che è accaduto.
+
 ### External Reference
 Collegamento non vincolante tra un'entità WMS e un identificativo presente in un sistema esterno.
 
