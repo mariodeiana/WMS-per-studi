@@ -15,10 +15,13 @@ function render(practice) {
   $("#tasks").innerHTML=practice.tasks.map(task=>{
     const result=resultByTask[task.code];
     const done=task.status==='COMPLETATO';
+    const reopened=Boolean(task.reopen_reason);
     const title=`<a class="task-open-link" href="/manager-task.html?practice=${encodeURIComponent(practice.id)}&task=${encodeURIComponent(task.code)}">${esc(task.title)}</a>`;
     const work=task.status==='IN_LAVORAZIONE'&&task.work_note?` · nota di lavoro: ${esc(task.work_note)}`:"";
-    const reopen=task.reopen_reason?` · riaperto: ${esc(task.reopen_reason)}`:"";
-    return `<div class="task ${done?'done':''} ${done?completionClass(result):task.status==='IN_LAVORAZIONE'?'in-progress':''}"><span class="check">${done?'✓':task.status==='IN_LAVORAZIONE'?'…':''}</span><div><div class="task-code">${task.code} · ${labels[task.status]||task.status}</div><div class="task-title">${title}</div><small>Assegnato a <strong>${task.assignee}</strong>${task.completed_by?` · completato da <strong>${task.completed_by}</strong>`:''}${task.depends_on.length?` · dipende da ${task.depends_on.join(', ')}`:' · nessuna dipendenza'}${work}${reopen}</small></div><div>${!done?`<select data-assignee="${task.code}"><option ${task.assignee==='anna.operatore'?'selected':''}>anna.operatore</option><option ${task.assignee==='luca.operatore'?'selected':''}>luca.operatore</option></select>`:''}</div></div>`;
+    const reopen=reopened?` · riaperto: ${esc(task.reopen_reason)}`:"";
+    const stateClass=done?completionClass(result):reopened?'reopened-task':task.status==='IN_LAVORAZIONE'?'in-progress':'';
+    const stateIcon=done?'✓':reopened?'↻':task.status==='IN_LAVORAZIONE'?'…':'';
+    return `<div class="task ${done?'done':''} ${stateClass}"><span class="check">${stateIcon}</span><div><div class="task-code">${task.code} · ${labels[task.status]||task.status}</div><div class="task-title">${title}</div><small>Assegnato a <strong>${task.assignee}</strong>${task.completed_by?` · completato da <strong>${task.completed_by}</strong>`:''}${task.depends_on.length?` · dipende da ${task.depends_on.join(', ')}`:' · nessuna dipendenza'}${work}${reopen}</small></div><div>${!done?`<select data-assignee="${task.code}"><option ${task.assignee==='anna.operatore'?'selected':''}>anna.operatore</option><option ${task.assignee==='luca.operatore'?'selected':''}>luca.operatore</option></select>`:''}</div></div>`;
   }).join("");
   document.querySelectorAll("[data-assignee]").forEach(select=>select.onchange=()=>assign(select.dataset.assignee,select.value));
   $("#close").disabled=practice.status!=="VALIDATA";
