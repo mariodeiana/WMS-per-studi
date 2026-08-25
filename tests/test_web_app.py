@@ -41,7 +41,7 @@ class WebAppTest(unittest.TestCase):
         return self.request(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/{code}/complete", "POST", {"actor": actor})
 
     def test_serves_manager_queue_task_and_validation_views(self):
-        for path, marker in [("/", b"Scheda Pratica Manager"), ("/queue.html", b"Work Queue Operatore"),
+        for path, marker in [("/", b"Scheda Pratica Manager"), ("/queue.html", b"I miei compiti"),
                              ("/task.html", b"Attivit\xc3\xa0 Operatore"), ("/validation.html", b"Validazione Pratica")]:
             status, page, content_type = self.request(path)
             self.assertEqual((status, content_type), (200, "text/html"))
