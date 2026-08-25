@@ -35,6 +35,44 @@ class AuditEvent:
     details: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class TaskNote:
+    actor: str
+    note: str
+    at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass(frozen=True)
+class Evidence:
+    id: str
+    filename: str
+    actor: str
+    actor_role: UserRole
+    source: str
+    related_practice_id: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    related_task_code: Optional[str] = None
+    content_type: Optional[str] = None
+    description: str = ""
+    document_type: str = "DOCUMENTO"
+    content_base64: str = ""
+    size_bytes: int = 0
+
+
+@dataclass(frozen=True)
+class WorkResult:
+    id: str
+    actor: str
+    actor_role: UserRole
+    outcome: str
+    note: str
+    related_practice_id: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    related_task_code: Optional[str] = None
+    evidence_ids: tuple[str, ...] = ()
+    action: str = "TASK"
+
+
 @dataclass
 class Task:
     code: str
@@ -44,6 +82,12 @@ class Task:
     assignee: Optional[str] = None
     completed_by: Optional[str] = None
     depends_on: tuple[str, ...] = ()
+    result_id: Optional[str] = None
+    instructions: str = ""
+    work_note: str = ""
+    work_notes: list[TaskNote] = field(default_factory=list)
+    progress_evidence_ids: list[str] = field(default_factory=list)
+    reopen_reason: str = ""
 
 
 @dataclass
@@ -60,6 +104,10 @@ class Practice:
     audit: list[AuditEvent] = field(default_factory=list)
     validated_by: Optional[str] = None
     validated_at: Optional[datetime] = None
+    results: list[WorkResult] = field(default_factory=list)
+    evidence: list[Evidence] = field(default_factory=list)
+    validation_result_id: Optional[str] = None
+    closure_result_id: Optional[str] = None
 
     def record(self, event_type: str, actor: str, **details: object) -> None:
         self.audit.append(AuditEvent(event_type=event_type, actor=actor, details=details))

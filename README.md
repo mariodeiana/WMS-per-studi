@@ -16,11 +16,17 @@ Obiettivo end-to-end:
 
 Oggetto centrale del sistema: **Pratica**.
 
-## WMS v0.2: demo operativa LIPE_TRIM
+## WMS v0.3: risultati di lavoro ed evidenze
 
 La web app usa esclusivamente la libreria standard Python e applica le azioni al
 dominio `WMS Core` esistente. Lo stato è mantenuto in memoria per questa
 iterazione dimostrativa: riavviare il processo ripristina la pratica di esempio.
+La v0.3 evolve il flusso v0.2 senza sostituirlo: completamento task,
+validazione e chiusura producono un risultato strutturato (esito, nota, autore,
+ruolo e data/ora) e possono registrare allegati come metadati nel fascicolo
+pratica. Audit e fascicolo restano separati; Manager e Validatore possono
+consultare risultati ed evidenze, mentre l'operatore riceve il contesto delle
+attività precedenti.
 
 Requisito: **Python 3.10 o successivo**. Dalla radice del repository eseguire:
 
