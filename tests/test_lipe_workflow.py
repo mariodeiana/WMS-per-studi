@@ -4,9 +4,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from wms_core.models import Practice, PracticeStatus, Task, UserRole
+from wms_core.models import Practice, PracticeStatus, Task, TaskStatus, UserRole
 from wms_core.templates import build_lipe_trim_tasks
-from wms_core.workflow import WorkflowError, assign_task, close_practice, complete_task, reopen_task, validate_practice
+from wms_core.workflow import WorkflowError, assign_task, close_practice, complete_task, reopen_task, save_task_progress, validate_practice
 
 
 class LipeWorkflowTest(unittest.TestCase):
@@ -67,18 +67,36 @@ class LipeWorkflowTest(unittest.TestCase):
         with self.assertRaises(WorkflowError):
             close_practice(practice, "valeria", UserRole.VALIDATORE)
 
+    def test_task_can_be_saved_in_progress_and_resumed(self):
+        practice = self.build_practice()
+        save_task_progress(practice, "LIPE-01", "anna", UserRole.OPERATORE, "Controllati i primi registri")
+        self.assertEqual(practice.tasks[0].status, TaskStatus.IN_LAVORAZIONE)
+        self.assertEqual(practice.tasks[0].work_note, "Controllati i primi registri")
+        save_task_progress(practice, "LIPE-01", "anna", UserRole.OPERATORE, "Controllo quasi concluso")
+        self.assertEqual(practice.tasks[0].work_note, "Controllo quasi concluso")
+        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE, "POSITIVO", "Concluso")
+        self.assertEqual(practice.tasks[0].status, TaskStatus.COMPLETATO)
+        self.assertEqual(practice.tasks[0].work_note, "")
+
     def test_manager_reopens_and_clears_completion_author(self):
         practice = self.build_practice()
         self.complete_all_out_of_order(practice)
-        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER)
+        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER, "Rivedere il prospetto")
         self.assertEqual(practice.status, PracticeStatus.IN_LAVORAZIONE)
         self.assertIsNone(practice.tasks[2].completed_by)
+        self.assertEqual(practice.tasks[2].reopen_reason, "Rivedere il prospetto")
         self.assertEqual(practice.audit[-2].event_type, "TASK_REOPENED")
+
+    def test_reopen_requires_reason(self):
+        practice = self.build_practice()
+        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE)
+        with self.assertRaises(WorkflowError):
+            reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER, "")
 
     def test_reopening_does_not_erase_separation_of_duties_history(self):
         practice = self.build_practice()
         self.complete_all_out_of_order(practice)
-        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER)
+        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER, "Secondo controllo")
         assign_task(practice, "LIPE-03", "luca", "manager", UserRole.MANAGER)
         complete_task(practice, "LIPE-03", "luca", UserRole.OPERATORE)
         with self.assertRaises(WorkflowError):
@@ -100,7 +118,7 @@ class LipeWorkflowTest(unittest.TestCase):
         practice = self.build_practice()
         complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE,
                       "POSITIVO", "Prima lavorazione", [{"filename": "prima.txt"}])
-        reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER)
+        reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER, "Rifare il controllo")
         self.assertIsNone(practice.tasks[0].result_id)
         self.assertEqual(len(practice.results), 1)
         self.assertEqual(len(practice.evidence), 1)
