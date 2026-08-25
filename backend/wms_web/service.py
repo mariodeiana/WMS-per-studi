@@ -81,9 +81,20 @@ class PracticeService:
             practice=self._find(practice_id); task=self._find_task(practice, task_code)
             if task.assignee != operator: raise PermissionError("Attività non assegnata all'operatore")
             evidences={e.id:_evidence(e) for e in practice.evidence}
+            journal=[]
+            for event in reversed(practice.audit):
+                if event.details.get("task_code") != task.code: continue
+                if event.event_type == "TASK_PROGRESS_SAVED":
+                    ids=event.details.get("evidence_ids") or []
+                    journal.append({"type":"PROGRESS","actor":event.actor,"at":_date(event.at),
+                                    "note":event.details.get("note") or "",
+                                    "evidence":[evidences[eid] for eid in ids if eid in evidences]})
+                elif event.event_type == "TASK_REOPENED":
+                    journal.append({"type":"REOPENED","actor":event.actor,"at":_date(event.at),
+                                    "note":event.details.get("reason") or "","evidence":[]})
             detail={"practice":{"id":practice.id,"type":practice.practice_type_code,"client_id":practice.client_id,
                                 "period_start":practice.period_start,"period_end":practice.period_end,"due_date":practice.due_date},
-                    "task":_task(task),
+                    "task":_task(task), "task_journal":journal,
                     "task_progress_evidence":[evidences[eid] for eid in task.progress_evidence_ids if eid in evidences]}
             if include_context:
                 task_titles={t.code:t.title for t in practice.tasks}; previous=[]
