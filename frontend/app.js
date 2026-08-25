@@ -13,9 +13,11 @@ function render(practice) {
   document.querySelectorAll("[data-assignee]").forEach(select=>select.onchange=()=>assign(select.dataset.assignee,select.value));
   document.querySelectorAll("[data-reopen]").forEach(button=>button.onclick=()=>act(`/tasks/${button.dataset.reopen}/reopen`,"marta.manager"));
   $("#close").disabled=practice.status!=="VALIDATA";
+  $("#results").innerHTML=practice.results.length?practice.results.map(result=>`<div class="result"><strong>${result.related_task_code||result.action} · ${result.outcome}</strong><p>${result.note||"Nessuna nota"}</p><small>${result.actor} (${result.actor_role}) · ${new Date(result.timestamp).toLocaleString('it-IT')}</small></div>`).join(""):"<p>Nessun risultato registrato.</p>";
+  $("#evidence").innerHTML=practice.evidence.map(item=>`<span class="evidence">${item.filename} · ${item.source}</span>`).join("");
   $("#audit").innerHTML=practice.audit.slice(0,14).map(event=>`<div class="event"><strong>${event.event_type.replaceAll('_',' ')}</strong><span>${event.actor} · ${new Date(event.at).toLocaleString('it-IT')}</span></div>`).join("");
 }
 async function act(path, actor) { try { $("#message").hidden=true; render(await request(`/api/practices/${id}${path}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor})})); } catch(error) { $("#message").textContent=error.message; $("#message").hidden=false; } }
 async function assign(task, assignee) { try { render(await request(`/api/practices/${id}/tasks/${task}/assign`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor:"marta.manager",assignee})})); } catch(error) { $("#message").textContent=error.message; $("#message").hidden=false; } }
-$("#close").onclick=()=>act("/close","marta.manager");
+$("#close").onclick=async()=>{const attachments=[...$("#close-files").files].map(file=>({filename:file.name,content_type:file.type||"application/octet-stream"}));try{$("#message").hidden=true;render(await request(`/api/practices/${id}/close`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor:"marta.manager",outcome:$("#close-outcome").value,note:$("#close-note").value,attachments})}))}catch(error){$("#message").textContent=error.message;$("#message").hidden=false}};
 request(`/api/practices/${id}`).then(render).catch(error=>{ $("#message").textContent=error.message; $("#message").hidden=false; });
