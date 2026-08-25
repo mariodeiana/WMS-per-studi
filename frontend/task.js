@@ -19,11 +19,13 @@ async function load(){
   const response=await fetch(`/api/tasks/${practice}/${task}?operator=${encodeURIComponent(operator)}&context=1`),data=await response.json();
   if(!response.ok)throw new Error(data.error);
   const history=(data.previous_results||[]).map(resultHtml).join("");
-  document.querySelector("#detail").innerHTML=`<p class="eyebrow">${data.practice.type} · ${data.practice.id}</p><h1>${escapeHtml(data.task.title)}</h1><p>Cliente <strong>${escapeHtml(data.practice.client_id)}</strong> · periodo ${data.practice.period_start} / ${data.practice.period_end} · scadenza ${data.practice.due_date}</p><p>Dipendenze esplicite: <strong>${data.task.depends_on.join(', ')||'nessuna'}</strong></p><section class="instructions"><p class="eyebrow">Istruzioni operative</p><h2>Cosa devi fare</h2><p>${escapeHtml(data.task.instructions||"Nessuna istruzione definita.")}</p></section>${history?`<section class="context"><h2>Materiale e risultati precedenti</h2><ul>${history}</ul></section>`:""}<form id="result-form"><label>Esito<select id="outcome" required><option value="" selected>Seleziona esito…</option><option value="POSITIVO">Positivo</option><option value="CON_RILIEVI">Con rilievi</option></select></label><label>Nota<textarea id="note" rows="4" placeholder="Descrivi il risultato del lavoro"></textarea></label><fieldset class="attachments-fieldset"><legend>Evidenze</legend><input id="attachment-picker" class="file-picker-hidden" type="file" multiple><div id="attachment-meta"></div><small>Puoi aggiungere più documenti. Massimo 5 MB per documento. Descrizione consigliata; tipo documento opzionale.</small></fieldset><button id="complete" type="button" ${data.task.status==='COMPLETATO'?'disabled':''}>${data.task.status==='COMPLETATO'?'Completata':'Registra risultato e completa'}</button></form>`;
+  const reopened=data.task.reopen_reason?`<section class="reopen-notice"><p class="eyebrow">Task riaperto dal manager</p><strong>Motivazione</strong><p>${escapeHtml(data.task.reopen_reason)}</p></section>`:"";
+  document.querySelector("#detail").innerHTML=`<p class="eyebrow">${data.practice.type} · ${data.practice.id}</p><h1>${escapeHtml(data.task.title)}</h1><p>Cliente <strong>${escapeHtml(data.practice.client_id)}</strong> · periodo ${data.practice.period_start} / ${data.practice.period_end} · scadenza ${data.practice.due_date}</p><p>Stato: <strong>${data.task.status==='IN_LAVORAZIONE'?'IN CORSO':data.task.status}</strong> · Dipendenze esplicite: <strong>${data.task.depends_on.join(', ')||'nessuna'}</strong></p>${reopened}<section class="instructions"><p class="eyebrow">Istruzioni operative</p><h2>Cosa devi fare</h2><p>${escapeHtml(data.task.instructions||"Nessuna istruzione definita.")}</p></section>${history?`<section class="context"><h2>Materiale e risultati precedenti</h2><ul>${history}</ul></section>`:""}<form id="result-form"><label>Esito<select id="outcome" required><option value="" selected>Seleziona esito…</option><option value="POSITIVO">Positivo</option><option value="CON_RILIEVI">Con rilievi</option></select></label><label>Nota<textarea id="note" rows="4" placeholder="Nota di lavoro o risultato">${escapeHtml(data.task.work_note||"")}</textarea></label><fieldset class="attachments-fieldset"><legend>Evidenze</legend><input id="attachment-picker" class="file-picker-hidden" type="file" multiple><div id="attachment-meta"></div><small>Puoi aggiungere più documenti. Massimo 5 MB per documento. Descrizione consigliata; tipo documento opzionale.</small></fieldset><div class="task-actions"><button id="pause" type="button" class="secondary">Salva e torna ai compiti</button><button id="complete" type="button" ${data.task.status==='COMPLETATO'?'disabled':''}>${data.task.status==='COMPLETATO'?'Completata':'Registra risultato e completa'}</button></div></form>`;
   const picker=document.querySelector("#attachment-picker");
   picker.addEventListener("change",()=>{addSelectedFiles([...picker.files]);picker.value=""});
   document.querySelector("#result-form").addEventListener("submit",event=>event.preventDefault());
   document.querySelector("#result-form").addEventListener("keydown",event=>{if(event.key==="Enter"&&event.target.tagName!=="TEXTAREA")event.preventDefault()});
+  document.querySelector("#pause").addEventListener("click",()=>saveProgress().catch(fail));
   document.querySelector("#complete").addEventListener("click",()=>complete().catch(fail));
   renderAttachmentMeta();
 }
@@ -45,6 +47,13 @@ function renderAttachmentMeta(){
   document.querySelector("#add-attachment-row").addEventListener("click",()=>document.querySelector("#attachment-picker").click());
 }
 function readFile(file){return new Promise((resolve,reject)=>{if(file.size>5*1024*1024){reject(new Error(`${file.name}: dimensione superiore a 5 MB`));return}const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",",2)[1]||"");reader.onerror=()=>reject(new Error(`Impossibile leggere ${file.name}`));reader.readAsDataURL(file)})}
+async function saveProgress(){
+  box.hidden=true;
+  if(selectedAttachments.length)throw new Error("Gli allegati vengono acquisiti con il risultato finale; per ora salva la nota di lavoro e allegali alla chiusura del task.");
+  const response=await fetch(`/api/practices/${practice}/tasks/${task}/progress`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor:operator,note:document.querySelector("#note").value})}),data=await response.json();
+  if(!response.ok)throw new Error(data.error);
+  location.href=document.querySelector("#back").href;
+}
 async function complete(){
   box.hidden=true;
   const outcome=document.querySelector("#outcome").value;
