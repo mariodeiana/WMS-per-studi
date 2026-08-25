@@ -84,10 +84,14 @@ class PracticeService:
                     "task":_task(task)}
             if include_context:
                 evidences={e.id:_evidence(e) for e in practice.evidence}
+                task_titles={t.code:t.title for t in practice.tasks}
                 previous=[]
                 for result in practice.results:
                     if result.related_task_code == task.code: continue
-                    row=_result(result); row["evidence"]=[evidences[eid] for eid in result.evidence_ids if eid in evidences]; previous.append(row)
+                    row=_result(result)
+                    row["related_task_title"]=task_titles.get(result.related_task_code or "")
+                    row["evidence"]=[evidences[eid] for eid in result.evidence_ids if eid in evidences]
+                    previous.append(row)
                 detail["previous_results"]=previous
                 detail["evidence"]=[_evidence(e) for e in practice.evidence]
             return detail
