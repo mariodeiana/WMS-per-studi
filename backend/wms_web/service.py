@@ -5,7 +5,7 @@ from threading import RLock
 
 from backend.wms_core.models import AuditEvent, Evidence, Practice, Task, UserRole, WorkResult
 from backend.wms_core.templates import build_lipe_trim_tasks
-from backend.wms_core.workflow import assign_task, close_practice, complete_task, reopen_task, validate_practice
+from backend.wms_core.workflow import assign_task, close_practice, complete_task, reopen_task, save_task_progress, validate_practice
 
 DEMO_PRACTICE_ID = "P-2026-LIPE-001"
 DEMO_USERS = {"anna.operatore": UserRole.OPERATORE, "luca.operatore": UserRole.OPERATORE,
@@ -27,7 +27,8 @@ def _date(value: datetime | None) -> str | None:
 def _task(task: Task) -> dict[str, object]:
     return {"code": task.code, "title": task.title, "instructions": task.instructions, "required": task.required,
             "status": task.status.value, "assignee": task.assignee, "completed_by": task.completed_by,
-            "depends_on": list(task.depends_on), "result_id": task.result_id}
+            "depends_on": list(task.depends_on), "result_id": task.result_id,
+            "work_note": task.work_note, "reopen_reason": task.reopen_reason}
 
 def _event(event: AuditEvent) -> dict[str, object]:
     return {"event_type": event.event_type, "actor": event.actor, "at": _date(event.at), "details": event.details}
@@ -101,6 +102,9 @@ class PracticeService:
                 for item in practice.evidence:
                     if item.id == evidence_id: return item
             raise KeyError(f"Evidenza inesistente: {evidence_id}")
+    def save_task_progress(self, practice_id, task_code, actor, note=""):
+        with self._lock:
+            p=self._find(practice_id); save_task_progress(p,task_code,actor,self._role(actor),note); return serialize_practice(p)
     def complete_task(self, practice_id, task_code, actor, outcome="COMPLETATO", note="", attachments=None):
         with self._lock:
             p=self._find(practice_id); complete_task(p,task_code,actor,self._role(actor),outcome,note,attachments); return serialize_practice(p)
@@ -108,9 +112,9 @@ class PracticeService:
         if self._role(assignee)!=UserRole.OPERATORE: raise PermissionError("L'assegnatario deve avere ruolo OPERATORE")
         with self._lock:
             p=self._find(practice_id); assign_task(p,task_code,assignee,actor,self._role(actor)); return serialize_practice(p)
-    def reopen_task(self, practice_id, task_code, actor):
+    def reopen_task(self, practice_id, task_code, actor, reason=""):
         with self._lock:
-            p=self._find(practice_id); reopen_task(p,task_code,actor,self._role(actor)); return serialize_practice(p)
+            p=self._find(practice_id); reopen_task(p,task_code,actor,self._role(actor),reason); return serialize_practice(p)
     def validate(self, practice_id, actor, outcome="VALIDATA", note="", attachments=None):
         with self._lock:
             p=self._find(practice_id); validate_practice(p,actor,self._role(actor),outcome,note,attachments); return serialize_practice(p)
