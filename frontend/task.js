@@ -2,7 +2,8 @@ const p=new URLSearchParams(location.search),operator=p.get("operator"),practice
 document.querySelector("#identity").textContent=`OPERATORE · ${operator}`;
 document.querySelector("#back").href=`/queue.html?operator=${encodeURIComponent(operator)}`;
 const box=document.querySelector("#message");
-function fail(error){box.textContent=error.message;box.hidden=false}
+const selectedAttachments=[];
+function fail(error){box.textContent=error.message;box.hidden=false;box.scrollIntoView({block:"nearest"})}
 function escapeHtml(value){const node=document.createElement("span");node.textContent=value??"";return node.innerHTML}
 function evidenceHtml(item){
   const meta=[item.document_type,item.description,item.actor,item.created_at?new Date(item.created_at).toLocaleString("it-IT"):""].filter(Boolean).join(" · ");
@@ -17,22 +18,37 @@ async function load(){
   const response=await fetch(`/api/tasks/${practice}/${task}?operator=${encodeURIComponent(operator)}&context=1`),data=await response.json();
   if(!response.ok)throw new Error(data.error);
   const history=(data.previous_results||[]).map(resultHtml).join("");
-  document.querySelector("#detail").innerHTML=`<p class="eyebrow">${data.practice.type} · ${data.practice.id}</p><h1>${escapeHtml(data.task.title)}</h1><p>Cliente <strong>${escapeHtml(data.practice.client_id)}</strong> · periodo ${data.practice.period_start} / ${data.practice.period_end} · scadenza ${data.practice.due_date}</p><p>Dipendenze esplicite: <strong>${data.task.depends_on.join(', ')||'nessuna'}</strong></p><section class="instructions"><p class="eyebrow">Istruzioni operative</p><h2>Cosa devi fare</h2><p>${escapeHtml(data.task.instructions||"Nessuna istruzione definita.")}</p></section>${history?`<section class="context"><h2>Materiale e risultati precedenti</h2><ul>${history}</ul></section>`:""}<form id="result-form"><label>Esito<select id="outcome"><option value="POSITIVO">Positivo</option><option value="CON_RILIEVI">Con rilievi</option></select></label><label>Nota<textarea id="note" rows="4" placeholder="Descrivi il risultato del lavoro"></textarea></label><label>Evidenze<input id="attachments" type="file" multiple></label><div id="attachment-meta"></div><small>Puoi allegare più documenti; massimo 5 MB per documento. Per ogni file puoi indicare descrizione e tipo.</small><button id="complete" type="button" ${data.task.status==='COMPLETATO'?'disabled':''}>${data.task.status==='COMPLETATO'?'Completata':'Registra risultato e completa'}</button></form>`;
-  document.querySelector("#attachments").addEventListener("change",renderAttachmentMeta);
+  document.querySelector("#detail").innerHTML=`<p class="eyebrow">${data.practice.type} · ${data.practice.id}</p><h1>${escapeHtml(data.task.title)}</h1><p>Cliente <strong>${escapeHtml(data.practice.client_id)}</strong> · periodo ${data.practice.period_start} / ${data.practice.period_end} · scadenza ${data.practice.due_date}</p><p>Dipendenze esplicite: <strong>${data.task.depends_on.join(', ')||'nessuna'}</strong></p><section class="instructions"><p class="eyebrow">Istruzioni operative</p><h2>Cosa devi fare</h2><p>${escapeHtml(data.task.instructions||"Nessuna istruzione definita.")}</p></section>${history?`<section class="context"><h2>Materiale e risultati precedenti</h2><ul>${history}</ul></section>`:""}<form id="result-form"><label>Esito<select id="outcome" required><option value="" selected>Seleziona esito…</option><option value="POSITIVO">Positivo</option><option value="CON_RILIEVI">Con rilievi</option></select></label><label>Nota<textarea id="note" rows="4" placeholder="Descrivi il risultato del lavoro"></textarea></label><fieldset class="attachments-fieldset"><legend>Evidenze</legend><input id="attachment-picker" type="file" multiple><button id="add-attachment" type="button">+ Aggiungi documento</button><div id="attachment-meta"></div><small>Puoi aggiungere più documenti, anche in momenti successivi. Massimo 5 MB per documento. Descrizione consigliata; tipo documento opzionale.</small></fieldset><button id="complete" type="button" ${data.task.status==='COMPLETATO'?'disabled':''}>${data.task.status==='COMPLETATO'?'Completata':'Registra risultato e completa'}</button></form>`;
+  const picker=document.querySelector("#attachment-picker");
+  picker.addEventListener("change",()=>{addSelectedFiles([...picker.files]);picker.value=""});
+  document.querySelector("#add-attachment").addEventListener("click",()=>picker.click());
   document.querySelector("#result-form").addEventListener("submit",event=>event.preventDefault());
   document.querySelector("#result-form").addEventListener("keydown",event=>{if(event.key==="Enter"&&event.target.tagName!=="TEXTAREA")event.preventDefault()});
   document.querySelector("#complete").addEventListener("click",()=>complete().catch(fail));
 }
+function addSelectedFiles(files){
+  for(const file of files){
+    if(file.size>5*1024*1024){fail(new Error(`${file.name}: dimensione superiore a 5 MB`));continue}
+    selectedAttachments.push({file,description:"",documentType:""});
+  }
+  renderAttachmentMeta();
+}
 function renderAttachmentMeta(){
-  const files=[...document.querySelector("#attachments").files];
-  document.querySelector("#attachment-meta").innerHTML=files.map((file,i)=>`<div class="attachment-meta"><strong>${escapeHtml(file.name)}</strong><label>Descrizione<input data-description="${i}" type="text" placeholder="Descrizione o nota del documento"></label><label>Tipo documento<input data-document-type="${i}" type="text" value="DOCUMENTO"></label></div>`).join("");
+  const container=document.querySelector("#attachment-meta");
+  if(!selectedAttachments.length){container.innerHTML="";return}
+  container.innerHTML=selectedAttachments.map((item,i)=>`<div class="attachment-meta"><div><strong>📄 ${escapeHtml(item.file.name)}</strong> <button type="button" data-remove="${i}" aria-label="Rimuovi ${escapeHtml(item.file.name)}">Rimuovi</button></div><label>Descrizione<input data-description="${i}" type="text" value="${escapeHtml(item.description)}" placeholder="Descrizione o nota del documento"></label><label>Tipo documento <small>(opzionale)</small><input data-document-type="${i}" type="text" value="${escapeHtml(item.documentType)}" placeholder="es. F24, ricevuta, prospetto"></label></div>`).join("");
+  container.querySelectorAll("[data-description]").forEach(input=>input.addEventListener("input",()=>{selectedAttachments[Number(input.dataset.description)].description=input.value}));
+  container.querySelectorAll("[data-document-type]").forEach(input=>input.addEventListener("input",()=>{selectedAttachments[Number(input.dataset.documentType)].documentType=input.value}));
+  container.querySelectorAll("[data-remove]").forEach(button=>button.addEventListener("click",()=>{selectedAttachments.splice(Number(button.dataset.remove),1);renderAttachmentMeta()}));
 }
 function readFile(file){return new Promise((resolve,reject)=>{if(file.size>5*1024*1024){reject(new Error(`${file.name}: dimensione superiore a 5 MB`));return}const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",",2)[1]||"");reader.onerror=()=>reject(new Error(`Impossibile leggere ${file.name}`));reader.readAsDataURL(file)})}
 async function complete(){
-  const files=[...document.querySelector("#attachments").files];
+  box.hidden=true;
+  const outcome=document.querySelector("#outcome").value;
+  if(!outcome){fail(new Error("Seleziona l'esito prima di completare il task."));document.querySelector("#outcome").focus();return}
   const attachments=[];
-  for(let i=0;i<files.length;i++)attachments.push({filename:files[i].name,content_type:files[i].type||"application/octet-stream",description:document.querySelector(`[data-description="${i}"]`)?.value||"",document_type:document.querySelector(`[data-document-type="${i}"]`)?.value||"DOCUMENTO",content_base64:await readFile(files[i])});
-  const response=await fetch(`/api/practices/${practice}/tasks/${task}/complete`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor:operator,outcome:document.querySelector("#outcome").value,note:document.querySelector("#note").value,attachments})}),data=await response.json();
+  for(const item of selectedAttachments)attachments.push({filename:item.file.name,content_type:item.file.type||"application/octet-stream",description:item.description,document_type:item.documentType||"DOCUMENTO",content_base64:await readFile(item.file)});
+  const response=await fetch(`/api/practices/${practice}/tasks/${task}/complete`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({actor:operator,outcome,note:document.querySelector("#note").value,attachments})}),data=await response.json();
   if(!response.ok)throw new Error(data.error);
   location.href=document.querySelector("#back").href;
 }
