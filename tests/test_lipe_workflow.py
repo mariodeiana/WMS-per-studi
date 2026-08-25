@@ -84,6 +84,27 @@ class LipeWorkflowTest(unittest.TestCase):
         with self.assertRaises(WorkflowError):
             validate_practice(practice, "anna", UserRole.VALIDATORE)
 
+    def test_structured_results_and_evidence_are_separate_from_audit(self):
+        practice = self.build_practice()
+        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE,
+                      "POSITIVO", "Registri verificati",
+                      [{"filename": "controllo.pdf", "content_type": "application/pdf"}])
+        result = practice.results[0]
+        self.assertEqual((result.actor, result.actor_role, result.outcome),
+                         ("anna", UserRole.OPERATORE, "POSITIVO"))
+        self.assertEqual(result.evidence_ids, (practice.evidence[0].id,))
+        self.assertEqual(practice.tasks[0].result_id, result.id)
+        self.assertEqual(practice.audit[-1].details["result_id"], result.id)
+
+    def test_reopening_preserves_result_and_dossier_history(self):
+        practice = self.build_practice()
+        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE,
+                      "POSITIVO", "Prima lavorazione", [{"filename": "prima.txt"}])
+        reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER)
+        self.assertIsNone(practice.tasks[0].result_id)
+        self.assertEqual(len(practice.results), 1)
+        self.assertEqual(len(practice.evidence), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
