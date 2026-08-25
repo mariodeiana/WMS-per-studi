@@ -106,6 +106,24 @@ def start_practice(practice: Practice, actor: str) -> None:
     _transition(practice, PracticeStatus.IN_LAVORAZIONE, actor)
 
 
+def save_task_progress(practice: Practice, task_code: str, actor: str, actor_role: UserRole, note: str = "") -> None:
+    _require_role(actor_role, UserRole.OPERATORE, "Solo un operatore può lavorare i task")
+    if practice.status not in {PracticeStatus.DA_FARE, PracticeStatus.IN_LAVORAZIONE}:
+        raise WorkflowError("Il task non può essere lavorato nello stato corrente")
+    task = _task(practice, task_code)
+    if task.assignee != actor:
+        raise WorkflowError("Il task può essere lavorato solo dall'operatore assegnatario")
+    if task.status == TaskStatus.COMPLETATO:
+        raise WorkflowError("Il task è già completato")
+    if practice.status == PracticeStatus.DA_FARE:
+        start_practice(practice, actor)
+    previous_status = task.status
+    task.status = TaskStatus.IN_LAVORAZIONE
+    task.work_note = note.strip()
+    practice.record("TASK_PROGRESS_SAVED", actor, task_code=task.code, previous=previous_status.value,
+                    current=task.status.value, note=task.work_note)
+
+
 def complete_task(practice: Practice, task_code: str, actor: str, actor_role: UserRole,
                   outcome: str = "COMPLETATO", note: str = "",
                   attachments: list[dict[str, str]] | None = None) -> None:
@@ -127,6 +145,8 @@ def complete_task(practice: Practice, task_code: str, actor: str, actor_role: Us
     task.status = TaskStatus.COMPLETATO
     task.completed_by = actor
     task.result_id = result.id
+    task.work_note = ""
+    task.reopen_reason = ""
     practice.record("TASK_COMPLETED", actor, task_code=task.code, result_id=result.id)
     if practice.required_tasks_complete:
         _transition(practice, PracticeStatus.COMPLETATA, actor)
@@ -134,10 +154,13 @@ def complete_task(practice: Practice, task_code: str, actor: str, actor_role: Us
             _transition(practice, PracticeStatus.DA_VALIDARE, actor)
 
 
-def reopen_task(practice: Practice, task_code: str, actor: str, actor_role: UserRole) -> None:
+def reopen_task(practice: Practice, task_code: str, actor: str, actor_role: UserRole, reason: str = "") -> None:
     _require_role(actor_role, UserRole.MANAGER, "Solo un manager può riaprire i task")
     if practice.status not in {PracticeStatus.IN_LAVORAZIONE, PracticeStatus.DA_VALIDARE}:
         raise WorkflowError("I task possono essere riaperti solo prima della validazione")
+    reason = reason.strip()
+    if not reason:
+        raise WorkflowError("La motivazione della riapertura è obbligatoria")
     task = _task(practice, task_code)
     if task.status != TaskStatus.COMPLETATO:
         raise WorkflowError("Solo un task completato può essere riaperto")
@@ -146,8 +169,10 @@ def reopen_task(practice: Practice, task_code: str, actor: str, actor_role: User
     task.status = TaskStatus.IN_LAVORAZIONE
     task.completed_by = None
     task.result_id = None
+    task.reopen_reason = reason
+    task.work_note = ""
     practice.record("TASK_REOPENED", actor, task_code=task.code, previous_completed_by=previous_completed_by,
-                    previous_result_id=previous_result_id)
+                    previous_result_id=previous_result_id, reason=reason)
     if practice.status == PracticeStatus.DA_VALIDARE:
         _transition(practice, PracticeStatus.IN_LAVORAZIONE, actor)
 
