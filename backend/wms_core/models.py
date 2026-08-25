@@ -36,6 +36,13 @@ class AuditEvent:
 
 
 @dataclass(frozen=True)
+class TaskNote:
+    actor: str
+    note: str
+    at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass(frozen=True)
 class Evidence:
     id: str
     filename: str
@@ -78,6 +85,7 @@ class Task:
     result_id: Optional[str] = None
     instructions: str = ""
     work_note: str = ""
+    work_notes: list[TaskNote] = field(default_factory=list)
     reopen_reason: str = ""
 
 
