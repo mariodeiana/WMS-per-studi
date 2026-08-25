@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from threading import RLock
 
-from backend.wms_core.models import AuditEvent, Practice, Task, UserRole
+from backend.wms_core.models import AuditEvent, Evidence, Practice, Task, UserRole, WorkResult
 from backend.wms_core.templates import build_lipe_trim_tasks
 from backend.wms_core.workflow import (
     assign_task,
@@ -59,6 +59,7 @@ def _task(task: Task) -> dict[str, object]:
         "assignee": task.assignee,
         "completed_by": task.completed_by,
         "depends_on": list(task.depends_on),
+        "result_id": task.result_id,
     }
 
 
@@ -68,6 +69,25 @@ def _event(event: AuditEvent) -> dict[str, object]:
         "actor": event.actor,
         "at": _date(event.at),
         "details": event.details,
+    }
+
+
+def _result(result: WorkResult) -> dict[str, object]:
+    return {
+        "id": result.id, "actor": result.actor, "actor_role": result.actor_role.value,
+        "timestamp": _date(result.timestamp), "outcome": result.outcome, "note": result.note,
+        "evidence_ids": list(result.evidence_ids),
+        "related_practice_id": result.related_practice_id,
+        "related_task_code": result.related_task_code, "action": result.action,
+    }
+
+
+def _evidence(item: Evidence) -> dict[str, object]:
+    return {
+        "id": item.id, "filename": item.filename, "content_type": item.content_type,
+        "actor": item.actor, "actor_role": item.actor_role.value,
+        "created_at": _date(item.created_at), "source": item.source,
+        "related_task_code": item.related_task_code,
     }
 
 
@@ -87,6 +107,10 @@ def serialize_practice(practice: Practice) -> dict[str, object]:
         "audit": [_event(event) for event in reversed(practice.audit)],
         "validated_by": practice.validated_by,
         "validated_at": _date(practice.validated_at),
+        "results": [_result(result) for result in reversed(practice.results)],
+        "evidence": [_evidence(item) for item in reversed(practice.evidence)],
+        "validation_result_id": practice.validation_result_id,
+        "closure_result_id": practice.closure_result_id,
         "roles": {
             "validator": "valeria.validatore",
             "manager": "marta.manager",
@@ -128,7 +152,7 @@ class PracticeService:
                 if task.assignee == operator and task.status.value != "COMPLETATO"
             ]
 
-    def task_detail(self, practice_id: str, task_code: str, operator: str) -> dict[str, object]:
+    def task_detail(self, practice_id: str, task_code: str, operator: str, include_context: bool = False) -> dict[str, object]:
         if self._role(operator) != UserRole.OPERATORE:
             raise PermissionError("L'attività è riservata agli operatori")
         with self._lock:
@@ -136,7 +160,7 @@ class PracticeService:
             task = self._find_task(practice, task_code)
             if task.assignee != operator:
                 raise PermissionError("Attività non assegnata all'operatore")
-            return {
+            detail = {
                 "practice": {
                     "id": practice.id,
                     "type": practice.practice_type_code,
@@ -147,11 +171,20 @@ class PracticeService:
                 },
                 "task": _task(task),
             }
+            if include_context:
+                detail["previous_results"] = [
+                    _result(result) for result in practice.results
+                    if result.related_task_code != task.code
+                ]
+                detail["evidence"] = [_evidence(item) for item in practice.evidence]
+            return detail
 
-    def complete_task(self, practice_id: str, task_code: str, actor: str) -> dict[str, object]:
+    def complete_task(self, practice_id: str, task_code: str, actor: str,
+                      outcome: str = "COMPLETATO", note: str = "",
+                      attachments: list[dict[str, str]] | None = None) -> dict[str, object]:
         with self._lock:
             practice = self._find(practice_id)
-            complete_task(practice, task_code, actor, self._role(actor))
+            complete_task(practice, task_code, actor, self._role(actor), outcome, note, attachments)
             return serialize_practice(practice)
 
     def assign_task(self, practice_id: str, task_code: str, assignee: str, actor: str) -> dict[str, object]:
@@ -168,16 +201,18 @@ class PracticeService:
             reopen_task(practice, task_code, actor, self._role(actor))
             return serialize_practice(practice)
 
-    def validate(self, practice_id: str, actor: str) -> dict[str, object]:
+    def validate(self, practice_id: str, actor: str, outcome: str = "VALIDATA",
+                 note: str = "", attachments: list[dict[str, str]] | None = None) -> dict[str, object]:
         with self._lock:
             practice = self._find(practice_id)
-            validate_practice(practice, actor, self._role(actor))
+            validate_practice(practice, actor, self._role(actor), outcome, note, attachments)
             return serialize_practice(practice)
 
-    def close(self, practice_id: str, actor: str) -> dict[str, object]:
+    def close(self, practice_id: str, actor: str, outcome: str = "CHIUSA",
+              note: str = "", attachments: list[dict[str, str]] | None = None) -> dict[str, object]:
         with self._lock:
             practice = self._find(practice_id)
-            close_practice(practice, actor, self._role(actor))
+            close_practice(practice, actor, self._role(actor), outcome, note, attachments)
             return serialize_practice(practice)
 
     def _find(self, practice_id: str) -> Practice:
