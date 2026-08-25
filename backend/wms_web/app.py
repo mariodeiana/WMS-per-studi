@@ -31,9 +31,11 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
         task_prefix = "/api/tasks/"
         if path.startswith(task_prefix):
             parts = [unquote(part) for part in path[len(task_prefix) :].split("/")]
-            operator = parse_qs(parsed.query).get("operator", [""])[0]
+            query = parse_qs(parsed.query)
+            operator = query.get("operator", [""])[0]
+            include_context = query.get("context", ["0"])[0] == "1"
             if len(parts) == 2:
-                self._api(lambda: self.service.task_detail(parts[0], parts[1], operator))
+                self._api(lambda: self.service.task_detail(parts[0], parts[1], operator, include_context))
             else:
                 self._json({"error": "Endpoint inesistente"}, HTTPStatus.NOT_FOUND)
             return
@@ -51,17 +53,28 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
         practice_id, action = parts[2], parts[3]
         body = self._body()
         actor = str(body.get("actor") or "operatore web")
+        outcome = str(body.get("outcome") or "")
+        note = str(body.get("note") or "")
+        attachments = body.get("attachments")
+        if not isinstance(attachments, list):
+            attachments = []
         if action == "tasks" and len(parts) == 6 and parts[5] == "complete":
-            self._api(lambda: self.service.complete_task(practice_id, parts[4], actor))
+            self._api(lambda: self.service.complete_task(
+                practice_id, parts[4], actor, outcome or "COMPLETATO", note, attachments
+            ))
         elif action == "tasks" and len(parts) == 6 and parts[5] == "assign":
             assignee = str(body.get("assignee") or "")
             self._api(lambda: self.service.assign_task(practice_id, parts[4], assignee, actor))
         elif action == "tasks" and len(parts) == 6 and parts[5] == "reopen":
             self._api(lambda: self.service.reopen_task(practice_id, parts[4], actor))
         elif action == "validate" and len(parts) == 4:
-            self._api(lambda: self.service.validate(practice_id, actor))
+            self._api(lambda: self.service.validate(
+                practice_id, actor, outcome or "VALIDATA", note, attachments
+            ))
         elif action == "close" and len(parts) == 4:
-            self._api(lambda: self.service.close(practice_id, actor))
+            self._api(lambda: self.service.close(
+                practice_id, actor, outcome or "CHIUSA", note, attachments
+            ))
         else:
             self._json({"error": "Endpoint inesistente"}, HTTPStatus.NOT_FOUND)
 
