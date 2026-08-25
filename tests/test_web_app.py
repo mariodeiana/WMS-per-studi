@@ -100,8 +100,6 @@ class WebAppTest(unittest.TestCase):
         for index in range(1, 8):
             actor = "anna.operatore" if index % 2 else "luca.operatore"
             self.complete(f"LIPE-{index:02}", actor)
-        # Application identity normally maps Anna to OPERATORE; exercise the domain separation rule
-        # by registering the same identity as a validator after she performed tasks.
         from backend.wms_web import service
         original = service.DEMO_USERS["anna.operatore"]
         service.DEMO_USERS["anna.operatore"] = service.UserRole.VALIDATORE
@@ -117,6 +115,22 @@ class WebAppTest(unittest.TestCase):
 
     def test_early_close_returns_409(self):
         self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/close", "POST", {"actor": "marta.manager"}), 409)
+
+    def test_task_result_and_evidence_are_exposed_to_manager_and_context(self):
+        _, body, _ = self.request(
+            f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/complete", "POST",
+            {"actor": "anna.operatore", "outcome": "POSITIVO", "note": "Dati completi",
+             "attachments": [{"filename": "verifica.pdf", "content_type": "application/pdf"}]},
+        )
+        practice = json.loads(body)
+        self.assertEqual(practice["results"][0]["note"], "Dati completi")
+        self.assertEqual(practice["evidence"][0]["filename"], "verifica.pdf")
+        _, body, _ = self.request(
+            f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-03?operator=anna.operatore&context=1"
+        )
+        context = json.loads(body)
+        self.assertEqual(context["previous_results"][0]["related_task_code"], "LIPE-01")
+        self.assertEqual(context["evidence"][0]["source"], "TASK")
 
 
 if __name__ == "__main__":
