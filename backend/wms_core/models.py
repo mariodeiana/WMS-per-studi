@@ -86,6 +86,7 @@ class Task:
     instructions: str = ""
     work_note: str = ""
     work_notes: list[TaskNote] = field(default_factory=list)
+    progress_evidence_ids: list[str] = field(default_factory=list)
     reopen_reason: str = ""
 
 
