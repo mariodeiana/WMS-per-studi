@@ -12,7 +12,8 @@ function evidenceHtml(item){
 }
 function resultHtml(result){
   const docs=(result.evidence||[]).map(evidenceHtml).join("");
-  return `<li><strong>${escapeHtml(result.related_task_code||result.action)} · ${escapeHtml(result.outcome)}</strong>${result.note?`<br>${escapeHtml(result.note)}`:""}<br><small>${escapeHtml(result.actor)} · ${result.timestamp?new Date(result.timestamp).toLocaleString("it-IT"):""}</small>${docs?`<div class="evidence-list">${docs}</div>`:""}</li>`;
+  const taskLabel=[result.related_task_code||result.action,result.related_task_title].filter(Boolean).join(" · ");
+  return `<li><strong>${escapeHtml(taskLabel)} · ${escapeHtml(result.outcome)}</strong>${result.note?`<br>${escapeHtml(result.note)}`:""}<br><small>${escapeHtml(result.actor)} · ${result.timestamp?new Date(result.timestamp).toLocaleString("it-IT"):""}</small>${docs?`<div class="evidence-list">${docs}</div>`:""}</li>`;
 }
 async function load(){
   const response=await fetch(`/api/tasks/${practice}/${task}?operator=${encodeURIComponent(operator)}&context=1`),data=await response.json();
