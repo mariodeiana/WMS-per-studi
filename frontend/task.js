@@ -7,8 +7,8 @@ function fail(error){box.textContent=error.message;box.hidden=false;box.scrollIn
 function escapeHtml(value){const node=document.createElement("span");node.textContent=value??"";return node.innerHTML}
 function evidenceHtml(item){
   const meta=[item.document_type,item.description,item.actor,item.created_at?new Date(item.created_at).toLocaleString("it-IT"):""].filter(Boolean).join(" · ");
-  const preview=item.content_type&&item.content_type.startsWith("image/")?`<img src="${item.preview_url}" alt="Anteprima ${escapeHtml(item.filename)}">`:`<span>${escapeHtml(meta||item.content_type||"Documento")}</span>`;
-  return `<span class="doc-preview"><a class="doc-icon" href="${item.preview_url}" target="_blank" title="${escapeHtml(meta)}">📄 ${escapeHtml(item.filename)}</a><span class="doc-popover">${preview}<small>${escapeHtml(meta)}</small><a href="${item.download_url}">Scarica</a></span></span>`;
+  const preview=item.content_type&&item.content_type.startsWith("image/")?`<img src="${item.preview_url}" alt="Anteprima ${escapeHtml(item.filename)}">`:`<iframe src="${item.preview_url}" title="Anteprima ${escapeHtml(item.filename)}"></iframe>`;
+  return `<span class="doc-preview"><a class="doc-icon" href="${item.preview_url}" target="_blank" title="Apri anteprima · ${escapeHtml(meta)}">📄 ${escapeHtml(item.filename)}</a><span class="doc-popover">${preview}<small>${escapeHtml(meta)}</small><a href="${item.preview_url}" target="_blank">Apri anteprima</a></span></span>`;
 }
 function resultHtml(result){
   const docs=(result.evidence||[]).map(evidenceHtml).join("");
