@@ -35,6 +35,40 @@ class AuditEvent:
     details: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class Evidence:
+    """An immutable dossier entry produced by a workflow action.
+
+    v0.3 stores attachment metadata rather than file bytes.  This keeps the
+    domain independent from the future persistence/document adapter.
+    """
+
+    id: str
+    filename: str
+    actor: str
+    actor_role: UserRole
+    source: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    related_task_code: Optional[str] = None
+    content_type: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class WorkResult:
+    """Structured result of a task, validation or closure action."""
+
+    id: str
+    actor: str
+    actor_role: UserRole
+    outcome: str
+    note: str
+    related_practice_id: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    related_task_code: Optional[str] = None
+    evidence_ids: tuple[str, ...] = ()
+    action: str = "TASK"
+
+
 @dataclass
 class Task:
     code: str
@@ -44,6 +78,7 @@ class Task:
     assignee: Optional[str] = None
     completed_by: Optional[str] = None
     depends_on: tuple[str, ...] = ()
+    result_id: Optional[str] = None
 
 
 @dataclass
@@ -60,6 +95,10 @@ class Practice:
     audit: list[AuditEvent] = field(default_factory=list)
     validated_by: Optional[str] = None
     validated_at: Optional[datetime] = None
+    results: list[WorkResult] = field(default_factory=list)
+    evidence: list[Evidence] = field(default_factory=list)
+    validation_result_id: Optional[str] = None
+    closure_result_id: Optional[str] = None
 
     def record(self, event_type: str, actor: str, **details: object) -> None:
         self.audit.append(AuditEvent(event_type=event_type, actor=actor, details=details))
