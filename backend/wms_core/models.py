@@ -37,26 +37,23 @@ class AuditEvent:
 
 @dataclass(frozen=True)
 class Evidence:
-    """An immutable dossier entry produced by a workflow action.
-
-    v0.3 stores attachment metadata rather than file bytes.  This keeps the
-    domain independent from the future persistence/document adapter.
-    """
-
     id: str
     filename: str
     actor: str
     actor_role: UserRole
     source: str
+    related_practice_id: str
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     related_task_code: Optional[str] = None
     content_type: Optional[str] = None
+    description: str = ""
+    document_type: str = "DOCUMENTO"
+    content_base64: str = ""
+    size_bytes: int = 0
 
 
 @dataclass(frozen=True)
 class WorkResult:
-    """Structured result of a task, validation or closure action."""
-
     id: str
     actor: str
     actor_role: UserRole
@@ -79,6 +76,7 @@ class Task:
     completed_by: Optional[str] = None
     depends_on: tuple[str, ...] = ()
     result_id: Optional[str] = None
+    instructions: str = ""
 
 
 @dataclass
