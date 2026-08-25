@@ -28,7 +28,8 @@ def _task(task: Task) -> dict[str, object]:
     return {"code": task.code, "title": task.title, "instructions": task.instructions, "required": task.required,
             "status": task.status.value, "assignee": task.assignee, "completed_by": task.completed_by,
             "depends_on": list(task.depends_on), "result_id": task.result_id,
-            "work_note": task.work_note, "reopen_reason": task.reopen_reason}
+            "work_note": task.work_note, "work_notes": [{"actor":n.actor,"note":n.note,"at":_date(n.at)} for n in task.work_notes],
+            "progress_evidence_ids": list(task.progress_evidence_ids), "reopen_reason": task.reopen_reason}
 
 def _event(event: AuditEvent) -> dict[str, object]:
     return {"event_type": event.event_type, "actor": event.actor, "at": _date(event.at), "details": event.details}
@@ -62,8 +63,7 @@ def serialize_practice(practice: Practice) -> dict[str, object]:
 
 class PracticeService:
     def __init__(self) -> None:
-        self._lock = RLock()
-        self._practices = {DEMO_PRACTICE_ID: build_demo_practice()}
+        self._lock = RLock(); self._practices = {DEMO_PRACTICE_ID: build_demo_practice()}
     def _role(self, actor: str) -> UserRole:
         try: return DEMO_USERS[actor]
         except KeyError as error: raise PermissionError(f"Utente demo sconosciuto: {actor}") from error
@@ -80,21 +80,18 @@ class PracticeService:
         with self._lock:
             practice=self._find(practice_id); task=self._find_task(practice, task_code)
             if task.assignee != operator: raise PermissionError("Attività non assegnata all'operatore")
+            evidences={e.id:_evidence(e) for e in practice.evidence}
             detail={"practice":{"id":practice.id,"type":practice.practice_type_code,"client_id":practice.client_id,
                                 "period_start":practice.period_start,"period_end":practice.period_end,"due_date":practice.due_date},
-                    "task":_task(task)}
+                    "task":_task(task),
+                    "task_progress_evidence":[evidences[eid] for eid in task.progress_evidence_ids if eid in evidences]}
             if include_context:
-                evidences={e.id:_evidence(e) for e in practice.evidence}
-                task_titles={t.code:t.title for t in practice.tasks}
-                previous=[]
+                task_titles={t.code:t.title for t in practice.tasks}; previous=[]
                 for result in practice.results:
                     if result.related_task_code == task.code: continue
-                    row=_result(result)
-                    row["related_task_title"]=task_titles.get(result.related_task_code or "")
-                    row["evidence"]=[evidences[eid] for eid in result.evidence_ids if eid in evidences]
-                    previous.append(row)
-                detail["previous_results"]=previous
-                detail["evidence"]=[_evidence(e) for e in practice.evidence]
+                    row=_result(result); row["related_task_title"]=task_titles.get(result.related_task_code or "")
+                    row["evidence"]=[evidences[eid] for eid in result.evidence_ids if eid in evidences]; previous.append(row)
+                detail["previous_results"]=previous; detail["evidence"]=[_evidence(e) for e in practice.evidence]
             return detail
     def evidence_content(self, evidence_id: str) -> Evidence:
         with self._lock:
@@ -102,9 +99,9 @@ class PracticeService:
                 for item in practice.evidence:
                     if item.id == evidence_id: return item
             raise KeyError(f"Evidenza inesistente: {evidence_id}")
-    def save_task_progress(self, practice_id, task_code, actor, note=""):
+    def save_task_progress(self, practice_id, task_code, actor, note="", attachments=None):
         with self._lock:
-            p=self._find(practice_id); save_task_progress(p,task_code,actor,self._role(actor),note); return serialize_practice(p)
+            p=self._find(practice_id); save_task_progress(p,task_code,actor,self._role(actor),note,attachments); return serialize_practice(p)
     def complete_task(self, practice_id, task_code, actor, outcome="COMPLETATO", note="", attachments=None):
         with self._lock:
             p=self._find(practice_id); complete_task(p,task_code,actor,self._role(actor),outcome,note,attachments); return serialize_practice(p)
