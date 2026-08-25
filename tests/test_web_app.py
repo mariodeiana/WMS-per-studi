@@ -77,7 +77,9 @@ class WebAppTest(unittest.TestCase):
         queue = json.loads(body)
         self.assertEqual([item["code"] for item in queue], ["LIPE-01", "LIPE-03", "LIPE-05", "LIPE-07"])
         _, body, _ = self.request(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?operator=anna.operatore")
-        self.assertEqual(set(json.loads(body)), {"practice", "task"})
+        detail = json.loads(body)
+        self.assertEqual(set(detail), {"practice", "task", "task_progress_evidence"})
+        self.assertEqual(detail["task_progress_evidence"], [])
         self.assertEqual(self.error(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?operator=luca.operatore"), 403)
 
     def test_tasks_complete_out_of_definition_order(self):
