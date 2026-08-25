@@ -18,6 +18,18 @@ Schema logico:
 
 `WMS Core <-> Connector/Adapter <-> Gestionale esterno`
 
+## Superfici operative v0.2
+
+- **Scheda Pratica Manager**: vista complessiva, assegnazioni, riapertura,
+  chiusura e audit.
+- **Work Queue Operatore**: sole attività assegnate all'identità corrente.
+- **Attività Operatore**: contesto minimo della pratica e completamento del
+  singolo task, senza azioni manageriali.
+- **Validazione Pratica**: superficie separata per il ruolo VALIDATORE.
+
+I ruoli e le regole di separazione dei compiti sono verificati nel WMS Core e
+nel layer applicativo; le viste non costituiscono il confine di sicurezza.
+
 ## Oggetto centrale
 
 La Pratica è l'istanza concreta di lavoro relativa a un cliente e a un periodo/evento. Nasce da un Tipo di pratica e genera i Task previsti dal relativo template.

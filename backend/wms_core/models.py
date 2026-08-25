@@ -21,6 +21,12 @@ class TaskStatus(str, Enum):
     COMPLETATO = "COMPLETATO"
 
 
+class UserRole(str, Enum):
+    OPERATORE = "OPERATORE"
+    VALIDATORE = "VALIDATORE"
+    MANAGER = "MANAGER"
+
+
 @dataclass
 class AuditEvent:
     event_type: str
@@ -35,6 +41,9 @@ class Task:
     title: str
     required: bool = True
     status: TaskStatus = TaskStatus.DA_FARE
+    assignee: Optional[str] = None
+    completed_by: Optional[str] = None
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclass
