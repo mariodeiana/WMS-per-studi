@@ -77,6 +77,8 @@ class Task:
     depends_on: tuple[str, ...] = ()
     result_id: Optional[str] = None
     instructions: str = ""
+    work_note: str = ""
+    reopen_reason: str = ""
 
 
 @dataclass
