@@ -49,7 +49,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
         practice_id,action=parts[2],parts[3]; body=self._body(); actor=str(body.get("actor") or "operatore web")
         outcome=str(body.get("outcome") or ""); note=str(body.get("note") or ""); attachments=body.get("attachments")
         if not isinstance(attachments,list): attachments=[]
-        if action=="tasks" and len(parts)==6 and parts[5]=="progress": self._api(lambda:self.service.save_task_progress(practice_id,parts[4],actor,note))
+        if action=="tasks" and len(parts)==6 and parts[5]=="progress": self._api(lambda:self.service.save_task_progress(practice_id,parts[4],actor,note,attachments))
         elif action=="tasks" and len(parts)==6 and parts[5]=="complete": self._api(lambda:self.service.complete_task(practice_id,parts[4],actor,outcome or "COMPLETATO",note,attachments))
         elif action=="tasks" and len(parts)==6 and parts[5]=="assign": self._api(lambda:self.service.assign_task(practice_id,parts[4],str(body.get("assignee") or ""),actor))
         elif action=="tasks" and len(parts)==6 and parts[5]=="reopen": self._api(lambda:self.service.reopen_task(practice_id,parts[4],actor,str(body.get("reason") or "")))
