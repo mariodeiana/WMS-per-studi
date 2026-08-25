@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 
 from .models import Evidence, Practice, PracticeStatus, Task, TaskStatus, UserRole, WorkResult
@@ -7,6 +8,9 @@ from .models import Evidence, Practice, PracticeStatus, Task, TaskStatus, UserRo
 
 class WorkflowError(ValueError):
     pass
+
+
+MAX_EVIDENCE_BYTES = 5 * 1024 * 1024
 
 
 def _record_result(
@@ -31,14 +35,30 @@ def _record_result(
         filename = str(item.get("filename", "")).strip()
         if not filename:
             raise WorkflowError("Ogni evidenza deve avere un nome file")
+        content_base64 = str(item.get("content_base64") or "")
+        try:
+            raw = base64.b64decode(content_base64, validate=True) if content_base64 else b""
+        except ValueError as error:
+            raise WorkflowError("Contenuto evidenza non valido") from error
+        if len(raw) > MAX_EVIDENCE_BYTES:
+            raise WorkflowError("Ogni documento può avere dimensione massima di 5 MB")
         evidence = Evidence(
-            id=f"E-{len(practice.evidence) + 1:04}", filename=filename,
+            id=f"E-{len(practice.evidence) + 1:04}",
+            filename=filename,
             content_type=str(item.get("content_type") or "application/octet-stream"),
-            actor=actor, actor_role=actor_role, source=action,
+            description=str(item.get("description") or "").strip(),
+            document_type=str(item.get("document_type") or "DOCUMENTO").strip() or "DOCUMENTO",
+            content_base64=content_base64,
+            size_bytes=len(raw),
+            actor=actor,
+            actor_role=actor_role,
+            source=action,
+            related_practice_id=practice.id,
             related_task_code=task_code,
         )
         practice.evidence.append(evidence)
         evidence_ids.append(evidence.id)
+        practice.record("EVIDENCE_ADDED", actor, evidence_id=evidence.id, task_code=task_code)
     result = WorkResult(
         id=f"R-{len(practice.results) + 1:04}", actor=actor,
         actor_role=actor_role, outcome=outcome, note=note,
@@ -46,6 +66,7 @@ def _record_result(
         evidence_ids=tuple(evidence_ids), action=action,
     )
     practice.results.append(result)
+    practice.record("WORK_RESULT_RECORDED", actor, result_id=result.id, task_code=task_code)
     return result
 
 
@@ -67,13 +88,7 @@ def _require_role(actual: UserRole, expected: UserRole, message: str) -> None:
         raise WorkflowError(message)
 
 
-def assign_task(
-    practice: Practice,
-    task_code: str,
-    assignee: str,
-    actor: str,
-    actor_role: UserRole,
-) -> None:
+def assign_task(practice: Practice, task_code: str, assignee: str, actor: str, actor_role: UserRole) -> None:
     _require_role(actor_role, UserRole.MANAGER, "Solo un manager può assegnare i task")
     if practice.status in {PracticeStatus.VALIDATA, PracticeStatus.CHIUSA}:
         raise WorkflowError("I task non possono essere assegnati dopo la validazione")
@@ -102,22 +117,17 @@ def complete_task(practice: Practice, task_code: str, actor: str, actor_role: Us
         raise WorkflowError("Il task può essere completato solo dall'operatore assegnatario")
     if task.status == TaskStatus.COMPLETATO:
         raise WorkflowError("Il task è già completato")
-    incomplete_dependencies = [
-        code for code in task.depends_on if _task(practice, code).status != TaskStatus.COMPLETATO
-    ]
+    incomplete_dependencies = [code for code in task.depends_on if _task(practice, code).status != TaskStatus.COMPLETATO]
     if incomplete_dependencies:
         raise WorkflowError(f"Dipendenze non completate: {', '.join(incomplete_dependencies)}")
-
     if practice.status == PracticeStatus.DA_FARE:
         start_practice(practice, actor)
-    result = _record_result(practice, actor=actor, actor_role=actor_role,
-                            outcome=outcome, note=note, attachments=attachments,
-                            action="TASK", task_code=task.code)
+    result = _record_result(practice, actor=actor, actor_role=actor_role, outcome=outcome, note=note,
+                            attachments=attachments, action="TASK", task_code=task.code)
     task.status = TaskStatus.COMPLETATO
     task.completed_by = actor
     task.result_id = result.id
     practice.record("TASK_COMPLETED", actor, task_code=task.code, result_id=result.id)
-
     if practice.required_tasks_complete:
         _transition(practice, PracticeStatus.COMPLETATA, actor)
         if practice.requires_validation:
@@ -131,16 +141,13 @@ def reopen_task(practice: Practice, task_code: str, actor: str, actor_role: User
     task = _task(practice, task_code)
     if task.status != TaskStatus.COMPLETATO:
         raise WorkflowError("Solo un task completato può essere riaperto")
-
     previous_completed_by = task.completed_by
+    previous_result_id = task.result_id
     task.status = TaskStatus.IN_LAVORAZIONE
     task.completed_by = None
-    previous_result_id = task.result_id
     task.result_id = None
-    practice.record(
-        "TASK_REOPENED", actor, task_code=task.code, previous_completed_by=previous_completed_by,
-        previous_result_id=previous_result_id,
-    )
+    practice.record("TASK_REOPENED", actor, task_code=task.code, previous_completed_by=previous_completed_by,
+                    previous_result_id=previous_result_id)
     if practice.status == PracticeStatus.DA_VALIDARE:
         _transition(practice, PracticeStatus.IN_LAVORAZIONE, actor)
 
@@ -153,10 +160,8 @@ def validate_practice(practice: Practice, actor: str, actor_role: UserRole,
         raise WorkflowError("La pratica non è pronta per la validazione")
     if any(event.event_type == "TASK_COMPLETED" and event.actor == actor for event in practice.audit):
         raise WorkflowError("Chi ha eseguito task della pratica non può validarla")
-
-    result = _record_result(practice, actor=actor, actor_role=actor_role,
-                            outcome=outcome, note=note, attachments=attachments,
-                            action="VALIDATION")
+    result = _record_result(practice, actor=actor, actor_role=actor_role, outcome=outcome, note=note,
+                            attachments=attachments, action="VALIDATION")
     practice.validation_result_id = result.id
     practice.validated_by = actor
     practice.validated_at = datetime.now(timezone.utc)
@@ -171,9 +176,8 @@ def close_practice(practice: Practice, actor: str, actor_role: UserRole,
     allowed = PracticeStatus.VALIDATA if practice.requires_validation else PracticeStatus.COMPLETATA
     if practice.status != allowed:
         raise WorkflowError("La pratica non può essere chiusa nello stato corrente")
-    result = _record_result(practice, actor=actor, actor_role=actor_role,
-                            outcome=outcome, note=note, attachments=attachments,
-                            action="CLOSURE")
+    result = _record_result(practice, actor=actor, actor_role=actor_role, outcome=outcome, note=note,
+                            attachments=attachments, action="CLOSURE")
     practice.closure_result_id = result.id
     _transition(practice, PracticeStatus.CHIUSA, actor)
     practice.record("PRACTICE_CLOSED", actor, result_id=result.id)
