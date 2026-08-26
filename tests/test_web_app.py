@@ -2,7 +2,6 @@ import json
 import threading
 import unittest
 from urllib.error import HTTPError
-from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from backend.wms_web.app import WMSRequestHandler, create_server
@@ -41,11 +40,25 @@ class WebAppTest(unittest.TestCase):
         return self.request(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/{code}/complete", "POST", {"actor": actor})
 
     def test_serves_manager_queue_task_and_validation_views(self):
-        for path, marker in [("/", b"Scheda Pratica Manager"), ("/queue.html", b"I miei compiti"),
-                             ("/task.html", b"Attivit\xc3\xa0 Operatore"), ("/validation.html", b"Validazione Pratica")]:
+        for path, marker in [
+            ("/", b"Pratiche in esecuzione"),
+            (f"/practice.html?practice={DEMO_PRACTICE_ID}", b"Scheda Pratica Manager"),
+            ("/queue.html", b"I miei compiti"),
+            ("/task.html", b"Attivit\xc3\xa0 Operatore"),
+            ("/validation.html", b"Validazione Pratica"),
+        ]:
             status, page, content_type = self.request(path)
             self.assertEqual((status, content_type), (200, "text/html"))
             self.assertIn(marker, page)
+
+    def test_manager_practice_list_is_scoped_and_summarized(self):
+        _, body, _ = self.request("/api/manager/practices?actor=marta.manager")
+        rows = json.loads(body)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], DEMO_PRACTICE_ID)
+        self.assertIn("urgency", rows[0])
+        self.assertIn("situation", rows[0])
+        self.assertEqual(self.error("/api/manager/practices?actor=anna.operatore"), 403)
 
     def test_demo_assignments_are_split_between_two_operators(self):
         _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
@@ -128,9 +141,7 @@ class WebAppTest(unittest.TestCase):
         practice = json.loads(body)
         self.assertEqual(practice["results"][0]["note"], "Dati completi")
         self.assertEqual(practice["evidence"][0]["filename"], "verifica.pdf")
-        _, body, _ = self.request(
-            f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-03?operator=anna.operatore&context=1"
-        )
+        _, body, _ = self.request(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-03?operator=anna.operatore&context=1")
         context = json.loads(body)
         self.assertEqual(context["previous_results"][0]["related_task_code"], "LIPE-01")
         self.assertEqual(context["evidence"][0]["source"], "TASK")
