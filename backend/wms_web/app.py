@@ -15,6 +15,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   if path=="/api/runtime":self._json({"debug":bool(self.debug_mode)});return
   if path=="/api/manager/practices":self._api(lambda:self.service.manager_practices(query.get("actor",[""])[0]));return
   if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue(query.get("actor",[""])[0]));return
+  if path=="/api/validation-history":self._api(lambda:self.service.validation_history(query.get("actor",[""])[0]));return
   if path=="/api/work-queue":self._api(lambda:self.service.work_queue(query.get("operator",[""])[0]));return
   if path.startswith("/api/evidence/"):
    eid=unquote(path[len("/api/evidence/"):]);disp=query.get("disposition",["inline"])[0]
