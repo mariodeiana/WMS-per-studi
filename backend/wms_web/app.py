@@ -8,7 +8,7 @@ from backend.wms_core.workflow import WorkflowError
 from backend.wms_web.service import DEMO_PRACTICE_ID,PracticeService
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DEMO_STATE=ROOT/".wms-demo-state.pkl"
 class WMSRequestHandler(BaseHTTPRequestHandler):
- service=PracticeService(state_path=DEMO_STATE);debug_mode=False
+ service=PracticeService(state_path=DEMO_STATE,rich_demo=True);debug_mode=False
  def do_GET(self):
   parsed=urlparse(self.path);path=parsed.path;query=parse_qs(parsed.query)
   if path=="/api/health":self._json({"status":"ok"});return
