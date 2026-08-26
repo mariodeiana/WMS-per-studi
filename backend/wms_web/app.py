@@ -3,6 +3,7 @@ import argparse,base64,json,mimetypes
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs,unquote,urlparse
+from backend.wms_core.models import NonConformity
 from backend.wms_core.workflow import WorkflowError,define_corrective_action
 from backend.wms_web.service import DEMO_PRACTICE_ID,PracticeService
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DEMO_STATE=ROOT/".wms-demo-state.pkl"
@@ -58,7 +59,17 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   data=target.read_bytes();self.send_response(200);self.send_header("Content-Type",mimetypes.guess_type(target.name)[0] or "application/octet-stream");self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
  def _json(self,payload,status=200):
   data=json.dumps(payload,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
-def create_server(host="127.0.0.1",port=8000,debug=False):WMSRequestHandler.debug_mode=debug;return ThreadingHTTPServer((host,port),WMSRequestHandler)
+def _migrate_nonconformities(service):
+ changed=False
+ with service._lock:
+  for p in service._practices.values():
+   if not hasattr(p,'nonconformities'):p.nonconformities=[]
+   if p.status.value!='NON_VALIDATA' or p.nonconformities:continue
+   validation=next((r for r in reversed(p.results) if r.action=='VALIDATION' and r.outcome=='NON_VALIDATA'),None)
+   reason=validation.note if validation else 'Non conformità rilevata in validazione'
+   actor=validation.actor if validation else 'valeria.validatore';nc=NonConformity(id='NC-0001',reason=reason,opened_by=actor);p.nonconformities.append(nc);p.record('NONCONFORMITY_OPENED',actor,nc_id=nc.id,reason=reason,source='VALIDATION',migrated=True);changed=True
+  if changed:service._persist()
+def create_server(host="127.0.0.1",port=8000,debug=False):_migrate_nonconformities(WMSRequestHandler.service);WMSRequestHandler.debug_mode=debug;return ThreadingHTTPServer((host,port),WMSRequestHandler)
 def main():
  parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);parser.add_argument("--debug",action="store_true");args=parser.parse_args();server=create_server(args.host,args.port,args.debug);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})");print(f"Stato demo persistente: {DEMO_STATE}");print(f"Modalità debug: {'ON' if args.debug else 'OFF'}")
  try:server.serve_forever()
