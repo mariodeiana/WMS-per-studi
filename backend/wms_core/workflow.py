@@ -1,9 +1,13 @@
 from __future__ import annotations
 import base64
 from datetime import datetime,timezone
-from .models import Evidence,Practice,PracticeStatus,Task,TaskNote,TaskStatus,UserRole,WorkResult
+from .models import CorrectiveAction,Evidence,NonConformity,NonConformityStatus,Practice,PracticeStatus,Task,TaskNote,TaskStatus,UserRole,WorkResult
 class WorkflowError(ValueError):pass
 MAX_EVIDENCE_BYTES=5*1024*1024
+def _ncs(p):
+ if not hasattr(p,'nonconformities'):p.nonconformities=[]
+ return p.nonconformities
+def _open_nc(p):return next((nc for nc in reversed(_ncs(p)) if nc.status!=NonConformityStatus.CHIUSA),None)
 def _add_evidence(practice,*,actor,actor_role,attachments,source,task_code=None):
  ids=[]
  for item in attachments or []:
@@ -56,7 +60,13 @@ def complete_task(p,task_code,actor,actor_role,outcome="COMPLETATO",note="",atta
  if missing:raise WorkflowError(f"Dipendenze non completate: {', '.join(missing)}")
  if p.status==PracticeStatus.DA_FARE:start_practice(p,actor)
  r=_record_result(p,actor=actor,actor_role=actor_role,outcome=outcome,note=note,attachments=attachments,action="TASK",task_code=t.code,existing_evidence_ids=t.progress_evidence_ids);t.status=TaskStatus.COMPLETATO;t.completed_by=actor;t.result_id=r.id;t.work_note="";t.reopen_reason="";t.progress_evidence_ids=[];p.record("TASK_COMPLETED",actor,task_code=t.code,result_id=r.id)
- if p.required_tasks_complete:_transition(p,PracticeStatus.COMPLETATA,actor);(_transition(p,PracticeStatus.DA_VALIDARE,actor) if p.requires_validation else None)
+ if p.required_tasks_complete:
+  nc=_open_nc(p)
+  if nc and nc.status==NonConformityStatus.IN_SANATORIA:
+   nc.status=NonConformityStatus.DA_VERIFICARE
+   if nc.corrective_actions:nc.corrective_actions[-1].completed_at=datetime.now(timezone.utc)
+   p.record("NONCONFORMITY_READY_FOR_VERIFICATION",actor,nc_id=nc.id)
+  _transition(p,PracticeStatus.COMPLETATA,actor);(_transition(p,PracticeStatus.DA_VALIDARE,actor) if p.requires_validation else None)
 def reopen_task(p,task_code,actor,actor_role,reason=""):
  _require_role(actor_role,UserRole.MANAGER,"Solo un manager può riaprire i task")
  if p.status not in {PracticeStatus.IN_LAVORAZIONE,PracticeStatus.DA_VALIDARE,PracticeStatus.NON_VALIDATA}:raise WorkflowError("I task possono essere riaperti solo prima della validazione")
@@ -66,6 +76,18 @@ def reopen_task(p,task_code,actor,actor_role,reason=""):
  if t.status!=TaskStatus.COMPLETATO:raise WorkflowError("Solo un task completato può essere riaperto")
  previous_by=t.completed_by;previous_result=t.result_id;t.status=TaskStatus.IN_LAVORAZIONE;t.completed_by=None;t.result_id=None;t.reopen_reason=reason;t.work_note="";t.progress_evidence_ids=[];p.record("TASK_REOPENED",actor,task_code=t.code,previous_completed_by=previous_by,previous_result_id=previous_result,reason=reason)
  if p.status in {PracticeStatus.DA_VALIDARE,PracticeStatus.NON_VALIDATA}:_transition(p,PracticeStatus.IN_LAVORAZIONE,actor)
+def define_corrective_action(p,actor,actor_role,task_codes,instruction):
+ _require_role(actor_role,UserRole.MANAGER,"Solo un manager può definire una azione correttiva")
+ nc=_open_nc(p)
+ if p.status!=PracticeStatus.NON_VALIDATA or not nc or nc.status!=NonConformityStatus.APERTA:raise WorkflowError("Non esiste una non conformità aperta da sanare")
+ instruction=instruction.strip();codes=tuple(dict.fromkeys(task_codes or []))
+ if not instruction:raise WorkflowError("La descrizione dell'azione correttiva è obbligatoria")
+ if not codes:raise WorkflowError("Selezionare almeno un task da riaprire")
+ for code in codes:
+  if _task(p,code).status!=TaskStatus.COMPLETATO:raise WorkflowError(f"Il task {code} non è completato")
+ action=CorrectiveAction(id=f"AC-{len(nc.corrective_actions)+1:02}",actor=actor,instruction=instruction,task_codes=codes);nc.corrective_actions.append(action);nc.status=NonConformityStatus.IN_SANATORIA;p.record("CORRECTIVE_ACTION_DEFINED",actor,nc_id=nc.id,action_id=action.id,task_codes=list(codes),instruction=instruction)
+ for code in codes:reopen_task(p,code,actor,actor_role,f"{nc.id} · {instruction}")
+ return nc
 def validate_practice(p,actor,actor_role,outcome="VALIDATA",note="",attachments=None):
  _require_role(actor_role,UserRole.VALIDATORE,"Solo un validatore può validare la pratica")
  if p.status!=PracticeStatus.DA_VALIDARE or not p.required_tasks_complete:raise WorkflowError("La pratica non è pronta per la validazione")
@@ -73,10 +95,20 @@ def validate_practice(p,actor,actor_role,outcome="VALIDATA",note="",attachments=
  outcome=outcome.strip().upper()
  if outcome not in {"VALIDATA","VALIDATA_CON_RILIEVI","NON_VALIDATA"}:raise WorkflowError("Esito di validazione non valido")
  if outcome in {"VALIDATA_CON_RILIEVI","NON_VALIDATA"} and not note.strip():raise WorkflowError("La motivazione è obbligatoria per questo esito")
- r=_record_result(p,actor=actor,actor_role=actor_role,outcome=outcome,note=note,attachments=attachments,action="VALIDATION");p.validation_result_id=r.id
- if outcome=="NON_VALIDATA":p.validated_by=None;p.validated_at=None;_transition(p,PracticeStatus.NON_VALIDATA,actor);p.record("PRACTICE_NOT_VALIDATED",actor,result_id=r.id,reason=note.strip());return
- p.validated_by=actor;p.validated_at=datetime.now(timezone.utc);_transition(p,PracticeStatus.VALIDATA,actor);p.record("PRACTICE_VALIDATED",actor,result_id=r.id)
+ r=_record_result(p,actor=actor,actor_role=actor_role,outcome=outcome,note=note,attachments=attachments,action="VALIDATION");p.validation_result_id=r.id;nc=_open_nc(p)
+ if outcome=="NON_VALIDATA":
+  p.validated_by=None;p.validated_at=None
+  if nc:
+   nc.status=NonConformityStatus.APERTA;nc.reason=note.strip();p.record("NONCONFORMITY_VERIFICATION_FAILED",actor,nc_id=nc.id,reason=note.strip())
+  else:
+   nc=NonConformity(id=f"NC-{len(_ncs(p))+1:04}",reason=note.strip(),opened_by=actor);_ncs(p).append(nc);p.record("NONCONFORMITY_OPENED",actor,nc_id=nc.id,reason=nc.reason,source=nc.source)
+  _transition(p,PracticeStatus.NON_VALIDATA,actor);p.record("PRACTICE_NOT_VALIDATED",actor,result_id=r.id,reason=note.strip(),nc_id=nc.id);return
+ p.validated_by=actor;p.validated_at=datetime.now(timezone.utc)
+ if nc and nc.status==NonConformityStatus.DA_VERIFICARE:
+  nc.status=NonConformityStatus.CHIUSA;nc.closed_at=datetime.now(timezone.utc);nc.closed_by=actor;p.record("NONCONFORMITY_CLOSED",actor,nc_id=nc.id,validation_result_id=r.id)
+ _transition(p,PracticeStatus.VALIDATA,actor);p.record("PRACTICE_VALIDATED",actor,result_id=r.id)
 def close_practice(p,actor,actor_role,outcome="CHIUSA",note="",attachments=None):
  _require_role(actor_role,UserRole.MANAGER,"Solo un manager può chiudere la pratica");allowed=PracticeStatus.VALIDATA if p.requires_validation else PracticeStatus.COMPLETATA
  if p.status!=allowed:raise WorkflowError("La pratica non può essere chiusa nello stato corrente")
+ if _open_nc(p):raise WorkflowError("La pratica ha una non conformità ancora aperta")
  r=_record_result(p,actor=actor,actor_role=actor_role,outcome=outcome,note=note,attachments=attachments,action="CLOSURE");p.closure_result_id=r.id;_transition(p,PracticeStatus.CHIUSA,actor);p.record("PRACTICE_CLOSED",actor,result_id=r.id)
