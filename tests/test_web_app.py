@@ -60,6 +60,16 @@ class WebAppTest(unittest.TestCase):
         self.assertIn("situation", rows[0])
         self.assertEqual(self.error("/api/manager/practices?actor=anna.operatore"), 403)
 
+    def test_rich_demo_has_25_practices_and_multiple_workflow_states(self):
+        service = PracticeService(rich_demo=True)
+        rows = service.manager_practices("marta.manager")
+        self.assertEqual(len(rows), 25)
+        self.assertEqual(len({row["client_id"] for row in rows}), 5)
+        self.assertEqual(len({row["practice_type_code"] for row in rows}), 5)
+        states = {row["status"] for row in rows}
+        self.assertTrue({"DA_FARE", "IN_LAVORAZIONE", "DA_VALIDARE", "NON_VALIDATA", "VALIDATA"}.issubset(states))
+        self.assertGreater(len(service.validation_queue("valeria.validatore")), 0)
+
     def test_demo_assignments_are_split_between_two_operators(self):
         _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}")
         practice = json.loads(body)
