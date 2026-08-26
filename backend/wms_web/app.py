@@ -1,10 +1,9 @@
 from __future__ import annotations
 import argparse,base64,json,mimetypes
-from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs,unquote,urlparse
-from backend.wms_core.workflow import WorkflowError
+from backend.wms_core.workflow import WorkflowError,define_corrective_action
 from backend.wms_web.service import DEMO_PRACTICE_ID,PracticeService
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DEMO_STATE=ROOT/".wms-demo-state.pkl"
 class WMSRequestHandler(BaseHTTPRequestHandler):
@@ -38,9 +37,13 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   elif action=="tasks" and len(parts)==6 and parts[5]=="complete":self._api(lambda:self.service.complete_task(pid,parts[4],actor,outcome or "COMPLETATO",note,attachments))
   elif action=="tasks" and len(parts)==6 and parts[5]=="assign":self._api(lambda:self.service.assign_task(pid,parts[4],str(body.get("assignee") or ""),actor))
   elif action=="tasks" and len(parts)==6 and parts[5]=="reopen":self._api(lambda:self.service.reopen_task(pid,parts[4],actor,str(body.get("reason") or "")))
+  elif action=="corrective-action" and len(parts)==4:self._api(lambda:self._corrective_action(pid,actor,body))
   elif action=="validate" and len(parts)==4:self._api(lambda:self.service.validate(pid,actor,outcome or "VALIDATA",note,attachments))
   elif action=="close" and len(parts)==4:self._api(lambda:self.service.close(pid,actor,outcome or "CHIUSA",note,attachments))
   else:self._json({"error":"Endpoint inesistente"},404)
+ def _corrective_action(self,pid,actor,body):
+  with self.service._lock:
+   practice=self.service._find(pid);define_corrective_action(practice,actor,self.service._role(actor),body.get("task_codes") or [],str(body.get("instruction") or ""));self.service._persist();return self.service.get(pid)
  def _api(self,op):
   try:self._json(op())
   except KeyError as e:self._json({"error":str(e.args[0])},404)
