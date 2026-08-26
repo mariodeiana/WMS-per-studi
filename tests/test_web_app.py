@@ -76,14 +76,7 @@ class WebAppTest(unittest.TestCase):
         practice = json.loads(body)
         self.assertEqual(practice["tasks"][0]["assignee"], "luca.operatore")
         self.assertEqual(practice["audit"][0]["event_type"], "TASK_ASSIGNED")
-        self.assertEqual(
-            self.error(
-                f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/assign",
-                "POST",
-                {"actor": "anna.operatore", "assignee": "luca.operatore"},
-            ),
-            409,
-        )
+        self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/assign", "POST", {"actor": "anna.operatore", "assignee": "luca.operatore"}), 409)
 
     def test_operator_queue_and_minimal_task_detail_are_scoped(self):
         _, body, _ = self.request("/api/work-queue?operator=anna.operatore")
@@ -97,10 +90,7 @@ class WebAppTest(unittest.TestCase):
         self.assertEqual(self.error(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?operator=luca.operatore"), 403)
 
     def test_tasks_complete_out_of_definition_order(self):
-        plan = [("LIPE-07", "anna.operatore"), ("LIPE-02", "luca.operatore"),
-                ("LIPE-05", "anna.operatore"), ("LIPE-04", "luca.operatore"),
-                ("LIPE-01", "anna.operatore"), ("LIPE-06", "luca.operatore"),
-                ("LIPE-03", "anna.operatore")]
+        plan = [("LIPE-07", "anna.operatore"), ("LIPE-02", "luca.operatore"), ("LIPE-05", "anna.operatore"), ("LIPE-04", "luca.operatore"), ("LIPE-01", "anna.operatore"), ("LIPE-06", "luca.operatore"), ("LIPE-03", "anna.operatore")]
         for code, actor in plan:
             _, body, _ = self.complete(code, actor)
         practice = json.loads(body)
@@ -139,12 +129,28 @@ class WebAppTest(unittest.TestCase):
              "attachments": [{"filename": "verifica.pdf", "content_type": "application/pdf"}]},
         )
         practice = json.loads(body)
-        self.assertEqual(practice["results"][0]["note"], "Dati completi")
-        self.assertEqual(practice["evidence"][0]["filename"], "verifica.pdf")
+        task = next(item for item in practice["tasks"] if item["code"] == "LIPE-01")
+        result = next(item for item in practice["results"] if item["id"] == task["result_id"])
+        evidence = next(item for item in practice["evidence"] if item["filename"] == "verifica.pdf")
+        self.assertEqual(result["related_task_code"], "LIPE-01")
+        self.assertEqual(evidence["related_task_code"], "LIPE-01")
+        self.assertIn(evidence["id"], result["evidence_ids"])
         _, body, _ = self.request(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-03?operator=anna.operatore&context=1")
         context = json.loads(body)
         self.assertEqual(context["previous_results"][0]["related_task_code"], "LIPE-01")
         self.assertEqual(context["evidence"][0]["source"], "TASK")
+
+    def test_recompleted_task_points_to_latest_result(self):
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/complete", "POST", {"actor":"anna.operatore","outcome":"CON_RILIEVI"})
+        first = json.loads(body)
+        first_result_id = next(t for t in first["tasks"] if t["code"]=="LIPE-01")["result_id"]
+        self.request(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/reopen", "POST", {"actor":"marta.manager","reason":"Correggere"})
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/complete", "POST", {"actor":"anna.operatore","outcome":"POSITIVO"})
+        current = json.loads(body)
+        task = next(t for t in current["tasks"] if t["code"]=="LIPE-01")
+        self.assertNotEqual(task["result_id"], first_result_id)
+        latest = next(r for r in current["results"] if r["id"]==task["result_id"])
+        self.assertEqual(latest["outcome"], "POSITIVO")
 
 
 if __name__ == "__main__":
