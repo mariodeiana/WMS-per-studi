@@ -12,10 +12,12 @@ from urllib.parse import parse_qs, unquote, urlparse
 from backend.wms_core.workflow import WorkflowError
 from backend.wms_web.service import DEMO_PRACTICE_ID, PracticeService
 
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+ROOT = Path(__file__).resolve().parents[2]
+FRONTEND = ROOT / "frontend"
+DEMO_STATE = ROOT / ".wms-demo-state.pkl"
 
 class WMSRequestHandler(BaseHTTPRequestHandler):
-    service = PracticeService()
+    service = PracticeService(state_path=DEMO_STATE)
     def do_GET(self) -> None:
         parsed=urlparse(self.path);path=parsed.path
         if path=="/api/health":self._json({"status":"ok"});return
@@ -66,7 +68,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
 
 def create_server(host="127.0.0.1",port=8000):return ThreadingHTTPServer((host,port),WMSRequestHandler)
 def main():
-    parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);args=parser.parse_args();server=create_server(args.host,args.port);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})")
+    parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);args=parser.parse_args();server=create_server(args.host,args.port);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})");print(f"Stato demo persistente: {DEMO_STATE}")
     try:server.serve_forever()
     except KeyboardInterrupt:pass
     finally:server.server_close()
