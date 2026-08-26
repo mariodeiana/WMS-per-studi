@@ -18,9 +18,11 @@ DEMO_STATE = ROOT / ".wms-demo-state.pkl"
 
 class WMSRequestHandler(BaseHTTPRequestHandler):
     service = PracticeService(state_path=DEMO_STATE)
+    debug_mode = False
     def do_GET(self) -> None:
         parsed=urlparse(self.path);path=parsed.path
         if path=="/api/health":self._json({"status":"ok"});return
+        if path=="/api/runtime":self._json({"debug":bool(self.debug_mode)});return
         if path=="/api/manager/practices":
             actor=parse_qs(parsed.query).get("actor",[""])[0];self._api(lambda:self.service.manager_practices(actor));return
         if path=="/api/work-queue":
@@ -66,9 +68,11 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
     def _json(self,payload,status=HTTPStatus.OK):
         data=json.dumps(payload,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
 
-def create_server(host="127.0.0.1",port=8000):return ThreadingHTTPServer((host,port),WMSRequestHandler)
+def create_server(host="127.0.0.1",port=8000,debug=False):
+    WMSRequestHandler.debug_mode=debug
+    return ThreadingHTTPServer((host,port),WMSRequestHandler)
 def main():
-    parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);args=parser.parse_args();server=create_server(args.host,args.port);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})");print(f"Stato demo persistente: {DEMO_STATE}")
+    parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);parser.add_argument("--debug",action="store_true",help="Mostra i codici interfaccia e abilita informazioni di debug runtime");args=parser.parse_args();server=create_server(args.host,args.port,args.debug);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})");print(f"Stato demo persistente: {DEMO_STATE}");print(f"Modalità debug: {'ON' if args.debug else 'OFF'}")
     try:server.serve_forever()
     except KeyboardInterrupt:pass
     finally:server.server_close()
