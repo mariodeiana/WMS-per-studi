@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import pickle
 from datetime import date, datetime
+from pathlib import Path
 from threading import RLock
 
 from backend.wms_core.models import AuditEvent, Evidence, Practice, Task, UserRole, WorkResult
@@ -56,7 +58,30 @@ def _manager_summary(practice: Practice) -> dict[str, object]:
     return {"id":practice.id,"practice_type_code":practice.practice_type_code,"client_id":practice.client_id,"period_start":practice.period_start,"period_end":practice.period_end,"due_date":practice.due_date,"status":practice.status.value,"progress":{"completed":completed,"total":total,"percent":round(100*completed/total) if total else 0},"situation":situation,"urgency":urgency,"urgency_sort":days}
 
 class PracticeService:
-    def __init__(self)->None: self._lock=RLock(); self._practices={DEMO_PRACTICE_ID:build_demo_practice()}
+    def __init__(self, state_path: str | Path | None = None) -> None:
+        self._lock = RLock()
+        self._state_path = Path(state_path) if state_path else None
+        self._practices = self._load_state() if self._state_path and self._state_path.exists() else {DEMO_PRACTICE_ID: build_demo_practice()}
+
+    def _load_state(self) -> dict[str, Practice]:
+        try:
+            with self._state_path.open("rb") as handle:
+                state = pickle.load(handle)
+            if not isinstance(state, dict) or not all(isinstance(item, Practice) for item in state.values()):
+                raise ValueError("formato stato demo non valido")
+            return state
+        except Exception as error:
+            raise RuntimeError(f"Impossibile caricare lo stato demo da {self._state_path}: {error}") from error
+
+    def _persist(self) -> None:
+        if not self._state_path:
+            return
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
+        with temporary.open("wb") as handle:
+            pickle.dump(self._practices, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        temporary.replace(self._state_path)
+
     def _role(self,actor:str)->UserRole:
         try:return DEMO_USERS[actor]
         except KeyError as error:raise PermissionError(f"Utente demo sconosciuto: {actor}") from error
@@ -96,18 +121,24 @@ class PracticeService:
                     if item.id==evidence_id:return item
             raise KeyError(f"Evidenza inesistente: {evidence_id}")
     def save_task_progress(self,practice_id,task_code,actor,note="",attachments=None):
-        with self._lock:p=self._find(practice_id);save_task_progress(p,task_code,actor,self._role(actor),note,attachments);return serialize_practice(p)
+        with self._lock:
+            p=self._find(practice_id);save_task_progress(p,task_code,actor,self._role(actor),note,attachments);self._persist();return serialize_practice(p)
     def complete_task(self,practice_id,task_code,actor,outcome="COMPLETATO",note="",attachments=None):
-        with self._lock:p=self._find(practice_id);complete_task(p,task_code,actor,self._role(actor),outcome,note,attachments);return serialize_practice(p)
+        with self._lock:
+            p=self._find(practice_id);complete_task(p,task_code,actor,self._role(actor),outcome,note,attachments);self._persist();return serialize_practice(p)
     def assign_task(self,practice_id,task_code,assignee,actor):
         if self._role(assignee)!=UserRole.OPERATORE:raise PermissionError("L'assegnatario deve avere ruolo OPERATORE")
-        with self._lock:p=self._find(practice_id);assign_task(p,task_code,assignee,actor,self._role(actor));return serialize_practice(p)
+        with self._lock:
+            p=self._find(practice_id);assign_task(p,task_code,assignee,actor,self._role(actor));self._persist();return serialize_practice(p)
     def reopen_task(self,practice_id,task_code,actor,reason=""):
-        with self._lock:p=self._find(practice_id);reopen_task(p,task_code,actor,self._role(actor),reason);return serialize_practice(p)
+        with self._lock:
+            p=self._find(practice_id);reopen_task(p,task_code,actor,self._role(actor),reason);self._persist();return serialize_practice(p)
     def validate(self,practice_id,actor,outcome="VALIDATA",note="",attachments=None):
-        with self._lock:p=self._find(practice_id);validate_practice(p,actor,self._role(actor),outcome,note,attachments);return serialize_practice(p)
+        with self._lock:
+            p=self._find(practice_id);validate_practice(p,actor,self._role(actor),outcome,note,attachments);self._persist();return serialize_practice(p)
     def close(self,practice_id,actor,outcome="CHIUSA",note="",attachments=None):
-        with self._lock:p=self._find(practice_id);close_practice(p,actor,self._role(actor),outcome,note,attachments);return serialize_practice(p)
+        with self._lock:
+            p=self._find(practice_id);close_practice(p,actor,self._role(actor),outcome,note,attachments);self._persist();return serialize_practice(p)
     def _find(self,practice_id):
         try:return self._practices[practice_id]
         except KeyError as error:raise KeyError(f"Pratica inesistente: {practice_id}") from error
