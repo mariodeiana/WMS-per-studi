@@ -4,9 +4,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from wms_core.models import Practice, PracticeStatus, Task, TaskStatus, UserRole
+from wms_core.models import NonConformityStatus, Practice, PracticeStatus, Task, TaskStatus, UserRole
 from wms_core.templates import build_lipe_trim_tasks
-from wms_core.workflow import WorkflowError, assign_task, close_practice, complete_task, reopen_task, save_task_progress, validate_practice
+from wms_core.workflow import WorkflowError, assign_task, close_practice, complete_task, define_corrective_action, reopen_task, save_task_progress, validate_practice
 
 
 class LipeWorkflowTest(unittest.TestCase):
@@ -37,92 +37,79 @@ class LipeWorkflowTest(unittest.TestCase):
         self.assertIn("PRACTICE_VALIDATED", events)
         self.assertIn("PRACTICE_CLOSED", events)
 
+    def test_non_conformity_corrective_cycle(self):
+        practice = self.build_practice()
+        self.complete_all_out_of_order(practice)
+        validate_practice(practice, "valeria", UserRole.VALIDATORE, "NON_VALIDATA", "Totali IVA non coerenti")
+        self.assertEqual(practice.status, PracticeStatus.NON_VALIDATA)
+        self.assertEqual(len(practice.nonconformities), 1)
+        nc = practice.nonconformities[0]
+        self.assertEqual((nc.id, nc.status), ("NC-0001", NonConformityStatus.APERTA))
+        define_corrective_action(practice, "manager", UserRole.MANAGER, ["LIPE-03", "LIPE-04"], "Rieseguire elaborazione e controllo")
+        self.assertEqual(practice.status, PracticeStatus.IN_LAVORAZIONE)
+        self.assertEqual(nc.status, NonConformityStatus.IN_SANATORIA)
+        self.assertIn("NC-0001", practice.tasks[2].reopen_reason)
+        complete_task(practice, "LIPE-03", "anna", UserRole.OPERATORE, "POSITIVO", "Rielaborato")
+        complete_task(practice, "LIPE-04", "luca", UserRole.OPERATORE, "POSITIVO", "Controllo corretto")
+        self.assertEqual(practice.status, PracticeStatus.DA_VALIDARE)
+        self.assertEqual(nc.status, NonConformityStatus.DA_VERIFICARE)
+        validate_practice(practice, "valeria", UserRole.VALIDATORE, "VALIDATA", "Sanatoria verificata")
+        self.assertEqual(practice.status, PracticeStatus.VALIDATA)
+        self.assertEqual(nc.status, NonConformityStatus.CHIUSA)
+        self.assertEqual(nc.closed_by, "valeria")
+
+    def test_failed_nc_verification_reuses_same_non_conformity(self):
+        practice = self.build_practice(); self.complete_all_out_of_order(practice)
+        validate_practice(practice, "valeria", UserRole.VALIDATORE, "NON_VALIDATA", "Prima non conformità")
+        define_corrective_action(practice, "manager", UserRole.MANAGER, ["LIPE-03"], "Correggere elaborazione")
+        complete_task(practice, "LIPE-03", "anna", UserRole.OPERATORE)
+        validate_practice(practice, "valeria", UserRole.VALIDATORE, "NON_VALIDATA", "Correzione ancora insufficiente")
+        self.assertEqual(len(practice.nonconformities), 1)
+        self.assertEqual(practice.nonconformities[0].status, NonConformityStatus.APERTA)
+        self.assertEqual(practice.nonconformities[0].reason, "Correzione ancora insufficiente")
+
     def test_only_assignee_operator_can_complete(self):
         practice = self.build_practice()
-        with self.assertRaises(WorkflowError):
-            complete_task(practice, "LIPE-01", "luca", UserRole.OPERATORE)
-        with self.assertRaises(WorkflowError):
-            complete_task(practice, "LIPE-01", "anna", UserRole.MANAGER)
+        with self.assertRaises(WorkflowError): complete_task(practice, "LIPE-01", "luca", UserRole.OPERATORE)
+        with self.assertRaises(WorkflowError): complete_task(practice, "LIPE-01", "anna", UserRole.MANAGER)
 
     def test_explicit_dependency_is_enforced_but_graphic_order_is_not(self):
-        practice = Practice("P", "GENERIC", "C", "2026-01-01", "2026-01-31", "2026-02-01", tasks=[
-            Task("FIRST", "First", assignee="anna"),
-            Task("SECOND", "Second", assignee="anna", depends_on=("FIRST",)),
-            Task("INDEPENDENT", "Independent", assignee="anna"),
-        ])
+        practice = Practice("P", "GENERIC", "C", "2026-01-01", "2026-01-31", "2026-02-01", tasks=[Task("FIRST", "First", assignee="anna"),Task("SECOND", "Second", assignee="anna", depends_on=("FIRST",)),Task("INDEPENDENT", "Independent", assignee="anna")])
         complete_task(practice, "INDEPENDENT", "anna", UserRole.OPERATORE)
-        with self.assertRaises(WorkflowError):
-            complete_task(practice, "SECOND", "anna", UserRole.OPERATORE)
+        with self.assertRaises(WorkflowError): complete_task(practice, "SECOND", "anna", UserRole.OPERATORE)
 
     def test_executor_cannot_validate_same_practice(self):
-        practice = self.build_practice()
-        self.complete_all_out_of_order(practice)
-        with self.assertRaises(WorkflowError):
-            validate_practice(practice, "anna", UserRole.VALIDATORE)
+        practice = self.build_practice(); self.complete_all_out_of_order(practice)
+        with self.assertRaises(WorkflowError): validate_practice(practice, "anna", UserRole.VALIDATORE)
 
     def test_closure_is_manager_only(self):
-        practice = self.build_practice()
-        self.complete_all_out_of_order(practice)
-        validate_practice(practice, "valeria", UserRole.VALIDATORE)
-        with self.assertRaises(WorkflowError):
-            close_practice(practice, "valeria", UserRole.VALIDATORE)
+        practice = self.build_practice(); self.complete_all_out_of_order(practice); validate_practice(practice, "valeria", UserRole.VALIDATORE)
+        with self.assertRaises(WorkflowError): close_practice(practice, "valeria", UserRole.VALIDATORE)
 
     def test_task_can_be_saved_in_progress_and_resumed(self):
-        practice = self.build_practice()
-        save_task_progress(practice, "LIPE-01", "anna", UserRole.OPERATORE, "Controllati i primi registri")
-        self.assertEqual(practice.tasks[0].status, TaskStatus.IN_LAVORAZIONE)
-        self.assertEqual(practice.tasks[0].work_note, "Controllati i primi registri")
-        save_task_progress(practice, "LIPE-01", "anna", UserRole.OPERATORE, "Controllo quasi concluso")
-        self.assertEqual(practice.tasks[0].work_note, "Controllo quasi concluso")
-        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE, "POSITIVO", "Concluso")
-        self.assertEqual(practice.tasks[0].status, TaskStatus.COMPLETATO)
-        self.assertEqual(practice.tasks[0].work_note, "")
+        practice = self.build_practice(); save_task_progress(practice, "LIPE-01", "anna", UserRole.OPERATORE, "Controllati i primi registri")
+        self.assertEqual(practice.tasks[0].status, TaskStatus.IN_LAVORAZIONE); self.assertEqual(practice.tasks[0].work_note, "Controllati i primi registri")
+        save_task_progress(practice, "LIPE-01", "anna", UserRole.OPERATORE, "Controllo quasi concluso"); self.assertEqual(practice.tasks[0].work_note, "Controllo quasi concluso")
+        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE, "POSITIVO", "Concluso"); self.assertEqual(practice.tasks[0].status, TaskStatus.COMPLETATO); self.assertEqual(practice.tasks[0].work_note, "")
 
     def test_manager_reopens_and_clears_completion_author(self):
-        practice = self.build_practice()
-        self.complete_all_out_of_order(practice)
-        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER, "Rivedere il prospetto")
-        self.assertEqual(practice.status, PracticeStatus.IN_LAVORAZIONE)
-        self.assertIsNone(practice.tasks[2].completed_by)
-        self.assertEqual(practice.tasks[2].reopen_reason, "Rivedere il prospetto")
-        self.assertEqual(practice.audit[-2].event_type, "TASK_REOPENED")
+        practice = self.build_practice(); self.complete_all_out_of_order(practice); reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER, "Rivedere il prospetto")
+        self.assertEqual(practice.status, PracticeStatus.IN_LAVORAZIONE); self.assertIsNone(practice.tasks[2].completed_by); self.assertEqual(practice.tasks[2].reopen_reason, "Rivedere il prospetto"); self.assertEqual(practice.audit[-2].event_type, "TASK_REOPENED")
 
     def test_reopen_requires_reason(self):
-        practice = self.build_practice()
-        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE)
-        with self.assertRaises(WorkflowError):
-            reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER, "")
+        practice = self.build_practice(); complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE)
+        with self.assertRaises(WorkflowError): reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER, "")
 
     def test_reopening_does_not_erase_separation_of_duties_history(self):
-        practice = self.build_practice()
-        self.complete_all_out_of_order(practice)
-        reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER, "Secondo controllo")
-        assign_task(practice, "LIPE-03", "luca", "manager", UserRole.MANAGER)
-        complete_task(practice, "LIPE-03", "luca", UserRole.OPERATORE)
-        with self.assertRaises(WorkflowError):
-            validate_practice(practice, "anna", UserRole.VALIDATORE)
+        practice = self.build_practice(); self.complete_all_out_of_order(practice); reopen_task(practice, "LIPE-03", "manager", UserRole.MANAGER, "Secondo controllo"); assign_task(practice, "LIPE-03", "luca", "manager", UserRole.MANAGER); complete_task(practice, "LIPE-03", "luca", UserRole.OPERATORE)
+        with self.assertRaises(WorkflowError): validate_practice(practice, "anna", UserRole.VALIDATORE)
 
     def test_structured_results_and_evidence_are_separate_from_audit(self):
-        practice = self.build_practice()
-        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE,
-                      "POSITIVO", "Registri verificati",
-                      [{"filename": "controllo.pdf", "content_type": "application/pdf"}])
-        result = practice.results[0]
-        self.assertEqual((result.actor, result.actor_role, result.outcome),
-                         ("anna", UserRole.OPERATORE, "POSITIVO"))
-        self.assertEqual(result.evidence_ids, (practice.evidence[0].id,))
-        self.assertEqual(practice.tasks[0].result_id, result.id)
-        self.assertEqual(practice.audit[-1].details["result_id"], result.id)
+        practice = self.build_practice(); complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE,"POSITIVO", "Registri verificati",[{"filename": "controllo.pdf", "content_type": "application/pdf"}])
+        result = practice.results[0]; self.assertEqual((result.actor, result.actor_role, result.outcome),("anna", UserRole.OPERATORE, "POSITIVO")); self.assertEqual(result.evidence_ids, (practice.evidence[0].id,)); self.assertEqual(practice.tasks[0].result_id, result.id); self.assertEqual(practice.audit[-1].details["result_id"], result.id)
 
     def test_reopening_preserves_result_and_dossier_history(self):
-        practice = self.build_practice()
-        complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE,
-                      "POSITIVO", "Prima lavorazione", [{"filename": "prima.txt"}])
-        reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER, "Rifare il controllo")
-        self.assertIsNone(practice.tasks[0].result_id)
-        self.assertEqual(len(practice.results), 1)
-        self.assertEqual(len(practice.evidence), 1)
+        practice = self.build_practice(); complete_task(practice, "LIPE-01", "anna", UserRole.OPERATORE,"POSITIVO", "Prima lavorazione", [{"filename": "prima.txt"}]); reopen_task(practice, "LIPE-01", "manager", UserRole.MANAGER, "Rifare il controllo")
+        self.assertIsNone(practice.tasks[0].result_id); self.assertEqual(len(practice.results), 1); self.assertEqual(len(practice.evidence), 1)
 
-
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == "__main__": unittest.main()
