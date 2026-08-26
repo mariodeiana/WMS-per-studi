@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="it">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scheda Pratica Manager · WMS</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<header class="topbar"><span class="brand">WMS</span><span>Scheda Pratica Manager</span><a href="/">Pratiche</a><a href="/queue.html?operator=anna.operatore">Compiti</a><a href="/validation.html">Validazione</a><span class="environment">MANAGER · marta.manager</span></header>
+<main><nav class="crumb"><a href="/">Pratiche</a> <span>/</span> <strong id="practice-id">…</strong></nav>
+<section class="hero"><div><p class="eyebrow">Scheda pratica</p><h1 id="practice-title">Pratica</h1><p class="subtitle"><span id="practice-type">…</span> · <span id="period">…</span></p></div><div class="status" id="status">Caricamento…</div></section>
+<div id="message" role="alert" hidden></div>
+<section class="facts card"><div><span>Cliente</span><strong id="client">…</strong></div><div><span>Scadenza</span><strong id="due">…</strong></div><div><span>Manager</span><strong id="manager">…</strong></div><div><span>Validatore</span><strong id="validator">…</strong></div></section>
+<div class="layout"><section class="card tasks"><div class="section-title"><div><p class="eyebrow">Workflow operativo</p><h2>Attività</h2></div><strong id="progress">0 / 0</strong></div><div class="bar"><i id="bar"></i></div><div id="tasks"></div></section>
+<aside><section class="card actions"><p class="eyebrow">Azioni manageriali</p><h2>Avanzamento</h2><p>I task sono lavorati nei Compiti personali. Il manager può riaprirli e chiudere la pratica validata.</p><label>Esito finale<select id="close-outcome"><option>CHIUSA</option><option>CHIUSA_CON_RILIEVI</option></select></label><label>Nota di chiusura<textarea id="close-note" rows="3"></textarea></label><label>Evidenze<input id="close-files" type="file" multiple></label><button id="close" class="secondary" disabled>Registra risultato e chiudi</button></section>
+<section class="card audit"><p class="eyebrow">Fascicolo</p><h2>Risultati ed evidenze</h2><div id="results"></div><div id="evidence"></div></section><section class="card audit"><p class="eyebrow">Tracciabilità</p><h2>Audit log</h2><div id="audit"></div></section></aside></div></main><script src="/app.js"></script></body></html>
