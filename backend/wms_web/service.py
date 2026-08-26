@@ -368,6 +368,28 @@ class PracticeService:
                 rows.append(row)
             return sorted(rows, key=lambda row: (row["urgency_sort"], row.get("waiting_since") or "", row["id"]))
 
+    def validation_history(self, actor):
+        if self._role(actor) != UserRole.VALIDATORE:
+            raise PermissionError("Lo storico validazioni è riservato al validatore")
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=RECENT_COMPLETED_HOURS)
+        rows = []
+        with self._lock:
+            for practice in self._practices.values():
+                result = next(
+                    (r for r in reversed(practice.results) if r.action == "VALIDATION" and r.actor == actor),
+                    None,
+                )
+                if result is None or result.timestamp < cutoff:
+                    continue
+                row = _summary(practice)
+                row.update({
+                    "validated_at": _date(result.timestamp),
+                    "validation_outcome": result.outcome,
+                    "validation_note": result.note,
+                })
+                rows.append(row)
+        return sorted(rows, key=lambda row: row["validated_at"], reverse=True)
+
     def work_queue(self, operator):
         if self._role(operator) != UserRole.OPERATORE:
             raise PermissionError("I miei compiti sono riservati agli operatori")
