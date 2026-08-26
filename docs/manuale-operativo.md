@@ -24,16 +24,9 @@ La mancata validazione non riapre automaticamente alcun task. Il Validatore giud
 
 ### 2. Presa in carico da parte del Manager
 
-La pratica `NON_VALIDATA` viene evidenziata nella coda Manager (`MGR-LST`). Aprendo la pratica (`MGR-PRT`), il Manager deve trovare in evidenza la NC aperta, con almeno:
+La pratica `NON_VALIDATA` viene evidenziata nella coda Manager (`MGR-LST`). Aprendo la pratica (`MGR-PRT`), il Manager deve trovare in evidenza la NC aperta, con almeno codice NC, stato, motivazione originaria, autore della rilevazione, data/ora ed eventuali evidenze della validazione.
 
-- codice NC;
-- stato della NC;
-- motivazione originaria;
-- autore della rilevazione;
-- data e ora;
-- eventuali evidenze allegate alla validazione.
-
-Il Manager prende in carico la NC e definisce la sanatoria. La responsabilità del Manager è quindi decidere come rientrare nel flusso operativo, senza modificare l'esito espresso dal Validatore.
+Il Manager prende in carico la NC e definisce la sanatoria. La responsabilità del Manager è decidere come rientrare nel flusso operativo, senza modificare l'esito espresso dal Validatore.
 
 ### 3. Definizione dell'azione correttiva
 
@@ -41,63 +34,58 @@ Il Manager individua uno o più task da rieseguire e descrive l'azione correttiv
 
 > Rieseguire l'elaborazione dopo verifica dei registri IVA e ripetere il controllo.
 
-Può quindi selezionare, ad esempio:
-
-- `LIPE-03 – Elaborazione dati LIPE`;
-- `LIPE-04 – Controllo risultato elaborazione`.
-
-L'avvio della sanatoria deve:
-
-- collegare l'azione correttiva alla NC;
-- riaprire i task selezionati, conservando come storico i risultati e gli allegati precedenti;
-- consentire al Manager di confermare o modificare l'assegnatario dei task;
-- portare la pratica nello stato `IN_LAVORAZIONE`;
-- registrare nell'audit la motivazione della riapertura e il riferimento alla NC.
-
-I task non interessati dalla NC restano completati e non vengono modificati.
+L'avvio della sanatoria collega l'azione correttiva alla NC, riapre solo i task selezionati conservando risultati e allegati precedenti, permette di governarne l'assegnazione, porta la pratica in `IN_LAVORAZIONE` e registra nell'audit motivazione e riferimento alla NC. I task non interessati restano completati.
 
 ### 4. Implementazione dell'azione correttiva
 
-I task riaperti ricompaiono nella coda dell'Operatore (`OPR-LST`) secondo le normali regole di priorità e assegnazione.
+I task riaperti ricompaiono nella coda dell'Operatore (`OPR-LST`) secondo le normali regole di priorità e assegnazione. In `OPR-TSK` l'Operatore vede chiaramente il riferimento alla NC e le istruzioni correttive.
 
-Aprendo il task (`OPR-TSK`), l'Operatore deve vedere chiaramente che il task è stato riaperto per una NC, ad esempio:
+L'Operatore lavora normalmente con note intermedie, allegati, diario e risultato finale. Il nuovo risultato non cancella quello precedente: entrambi restano nel fascicolo.
 
-> **Riaperto per NC-0001**  
-> Rieseguire l'elaborazione dopo verifica dei registri IVA e ripetere il controllo.
-
-L'Operatore lavora il task normalmente: può registrare note intermedie, allegati, diario di lavorazione e risultato finale. Il nuovo risultato non sostituisce né cancella quello precedente: entrambi rimangono nel fascicolo, distinguendo risultato storico e risultato corrente.
-
-Quando tutti i task correttivi sono nuovamente completati e la pratica soddisfa i requisiti previsti, la pratica ritorna nello stato `DA_VALIDARE`.
-
-La NC, invece, non viene chiusa automaticamente: passa allo stato `DA_VERIFICARE`.
+Quando tutti i task correttivi sono nuovamente completati, la pratica ritorna `DA_VALIDARE`; la NC passa a `DA_VERIFICARE` e non viene chiusa automaticamente.
 
 ### 5. Verifica della sanatoria
 
-La pratica torna nella coda di validazione (`VAL-LST`). Nel dettaglio (`VAL-PRT`) il Validatore deve vedere che si tratta di una nuova verifica collegata a `NC-0001` e poter ricostruire il prima e il dopo:
+La pratica torna in `VAL-LST`. In `VAL-PRT` il Validatore deve poter ricostruire motivo originario, azione correttiva, task riaperti, nuovi risultati/evidenze e risultati storici.
 
-- motivo originario della NC;
-- azione correttiva definita dal Manager;
-- task riaperti;
-- nuovi risultati;
-- nuove note ed evidenze;
-- risultati storici precedenti alla correzione.
-
-Se la nuova validazione ha esito `VALIDATA`, la NC viene chiusa e la pratica passa a `VALIDATA`.
-
-Se l'esito è `VALIDATA_CON_RILIEVI`, occorre distinguere se il rilievo residuo è non bloccante e quindi compatibile con la chiusura della NC, oppure se richiede ulteriore azione correttiva.
-
-Se l'esito è nuovamente `NON_VALIDATA`, non viene creata automaticamente una nuova NC per lo stesso problema. La NC originaria resta aperta e viene registrato un nuovo ciclo di sanatoria, mantenendo la sequenza completa dei tentativi di correzione.
+`VALIDATA` chiude la NC e porta la pratica a `VALIDATA`. `VALIDATA_CON_RILIEVI` può chiudere la NC se il rilievo residuo è non bloccante. Una nuova `NON_VALIDATA` non crea automaticamente una seconda NC per lo stesso problema: la NC originaria viene riaperta e registra un nuovo ciclo di sanatoria.
 
 ### 6. Principio di separazione dei ruoli
 
-Il flusso mantiene una separazione precisa delle responsabilità:
-
 **Operatore esegue → Validatore giudica → Manager governa l'eccezione.**
 
-Il Validatore rileva e descrive la Non Conformità. Il Manager definisce la risposta organizzativa e operativa. L'Operatore implementa le azioni correttive. Il Validatore verifica infine che la sanatoria sia sufficiente.
+Il Validatore rileva e descrive la Non Conformità. Il Manager definisce la risposta organizzativa e operativa. L'Operatore implementa le azioni correttive. Il Validatore verifica infine la sanatoria.
 
 ### 7. Ciclo sintetico della NC
 
 `NON_VALIDATA → NC APERTA → presa in carico Manager → azione correttiva → task riaperti → nuova lavorazione → NC DA_VERIFICARE → nuova validazione → NC CHIUSA`
 
-La NC è quindi l'oggetto che descrive e storicizza il problema; i task riaperti costituiscono le azioni operative necessarie per correggerlo.
+La NC è l'oggetto che descrive e storicizza il problema; i task riaperti costituiscono le azioni operative necessarie per correggerlo.
+
+### 8. Registro operativo NC / Azioni Correttive
+
+Le NC non devono essere consultabili esclusivamente entrando nelle singole pratiche. Il Manager deve disporre di un registro trasversale dedicato, identificato come `MGR-NCL` — Non Conformità e Azioni Correttive.
+
+Il registro presenta una riga per NC e deve consentire di controllare almeno: codice NC, cliente, pratica, data di apertura, origine, descrizione sintetica, stato NC, azione correttiva definita, task coinvolti, stato di attuazione dell'azione correttiva e data dell'ultima evoluzione.
+
+Gli stati della NC sono inizialmente: `APERTA`, `IN_SANATORIA`, `DA_VERIFICARE`, `CHIUSA`.
+
+Lo stato dell'Azione Correttiva viene derivato dallo stato dei task collegati, evitando duplicazioni informative: `DA_ATTUARE → IN_CORSO → ATTUATA → VERIFICATA`.
+
+La selezione di una NC da `MGR-NCL` porta inizialmente alla relativa `MGR-PRT`, posizionata sul contesto della Non Conformità. Un dettaglio NC autonomo (`MGR-NCD`) sarà introdotto solo se l'evoluzione funzionale lo renderà necessario.
+
+Gli stessi dati alimenteranno la futura dashboard Manager (`MGR-DSH`), che dovrà sintetizzare almeno NC aperte, in sanatoria, da verificare e ferme/scadute.
+
+## Interfacce applicative consolidate
+
+- `MGR-LST` — coda/lista delle pratiche in esecuzione del Manager;
+- `MGR-PRT` — dettaglio della pratica per il Manager;
+- `MGR-TSK` — dettaglio del task per il Manager;
+- `MGR-NCL` — registro Non Conformità e Azioni Correttive;
+- `MGR-DSH` — dashboard generale Manager, prevista;
+- `OPR-LST` — coda dei task dell'Operatore;
+- `OPR-TSK` — dettaglio operativo del task;
+- `VAL-LST` — coda delle pratiche da validare, con validazioni recenti;
+- `VAL-PRT` — dettaglio e decisione di validazione.
+
+In modalità runtime `debug` il codice dell'interfaccia viene mostrato nella testata fissa.
