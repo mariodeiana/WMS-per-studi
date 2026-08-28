@@ -13,6 +13,7 @@ class Group:
 
 
 GROUPS = {
+    "amministratori-wms": Group("amministratori-wms", "Amministratori WMS", "AMMINISTRATORE"),
     "manager": Group("manager", "Manager", "MANAGER"),
     "contabili": Group("contabili", "Contabili", "OPERATORE"),
     "segreteria": Group("segreteria", "Segreteria", "OPERATORE"),
@@ -46,6 +47,7 @@ DEMO_ACCOUNTS = {
         (
             Membership("mario-manager", "manager", "Manager"),
             Membership("mario-contabili", "contabili", "Operatore · Contabili"),
+            Membership("mario-amministratore", "amministratori-wms", "Amministratore WMS"),
         ),
     ),
     "valeria.demo": Account(
