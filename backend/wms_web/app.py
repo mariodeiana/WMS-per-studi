@@ -1,22 +1,36 @@
 from __future__ import annotations
 import argparse,base64,json,mimetypes
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs,unquote,urlparse
 from backend.wms_core.models import NonConformity
 from backend.wms_core.workflow import WorkflowError,define_corrective_action
+from backend.wms_web.auth import AUTH
 from backend.wms_web.service import DEMO_PRACTICE_ID,PracticeService
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DEMO_STATE=ROOT/".wms-demo-state.pkl"
 class WMSRequestHandler(BaseHTTPRequestHandler):
  service=PracticeService(state_path=DEMO_STATE,rich_demo=True);debug_mode=False
+ def _token(self):
+  cookie=SimpleCookie(self.headers.get("Cookie", ""));item=cookie.get("WMSSESSION");return item.value if item else None
+ def _session(self):return AUTH.describe(self._token())
+ def _actor(self):return AUTH.actor(self._token())
+ def _require_session(self):
+  try:return self._session()
+  except PermissionError:return None
  def do_GET(self):
   parsed=urlparse(self.path);path=parsed.path;query=parse_qs(parsed.query)
   if path=="/api/health":self._json({"status":"ok"});return
   if path=="/api/runtime":self._json({"debug":bool(self.debug_mode)});return
-  if path=="/api/manager/practices":self._api(lambda:self.service.manager_practices(query.get("actor",[""])[0]));return
-  if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue(query.get("actor",[""])[0]));return
-  if path=="/api/validation-history":self._api(lambda:self.service.validation_history(query.get("actor",[""])[0]));return
-  if path=="/api/work-queue":self._api(lambda:self.service.work_queue(query.get("operator",[""])[0]));return
+  if path=="/api/session":
+   try:self._json(self._session())
+   except PermissionError as e:self._json({"error":str(e)},401)
+   return
+  if path.startswith("/api/") and not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
+  if path=="/api/manager/practices":self._api(lambda:self.service.manager_practices(self._actor()));return
+  if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue(self._actor()));return
+  if path=="/api/validation-history":self._api(lambda:self.service.validation_history(self._actor()));return
+  if path=="/api/work-queue":self._api(lambda:self.service.work_queue(self._actor()));return
   if path.startswith("/api/evidence/"):
    eid=unquote(path[len("/api/evidence/"):]);disp=query.get("disposition",["inline"])[0]
    try:
@@ -24,16 +38,30 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    except KeyError as e:self._json({"error":str(e.args[0])},404)
    return
   if path.startswith("/api/tasks/"):
-   parts=[unquote(x) for x in path[len("/api/tasks/"):].split("/")];operator=query.get("operator",[""])[0];context=query.get("context",["0"])[0]=="1"
-   if len(parts)==2:self._api(lambda:self.service.task_detail(parts[0],parts[1],operator,context))
+   parts=[unquote(x) for x in path[len("/api/tasks/"):].split("/")];context=query.get("context",["0"])[0]=="1"
+   if len(parts)==2:self._api(lambda:self.service.task_detail(parts[0],parts[1],self._actor(),context))
    else:self._json({"error":"Endpoint inesistente"},404)
    return
   if path.startswith("/api/practices/"):self._api(lambda:self.service.get(unquote(path[len("/api/practices/"):])));return
+  if path not in {"/login.html","/login.js","/styles.css"} and path.endswith((".html","/")) and not self._require_session():self._redirect("/login.html");return
   self._static(path)
  def do_POST(self):
-  parts=[unquote(x) for x in urlparse(self.path).path.split("/") if x]
+  path=urlparse(self.path).path;body=self._body()
+  if path=="/api/login":
+   try:
+    token,session=AUTH.login(str(body.get("username") or ""),str(body.get("password") or ""));self._json(session,200,{"Set-Cookie":f"WMSSESSION={token}; Path=/; HttpOnly; SameSite=Lax"})
+   except PermissionError as e:self._json({"error":str(e)},401)
+   return
+  if path=="/api/logout":
+   AUTH.logout(self._token());self._json({"ok":True},200,{"Set-Cookie":"WMSSESSION=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"});return
+  if path=="/api/session/role":
+   try:self._json(AUTH.switch(self._token(),str(body.get("membership_id") or "")))
+   except PermissionError as e:self._json({"error":str(e)},403)
+   return
+  if not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
+  parts=[unquote(x) for x in path.split("/") if x]
   if len(parts)<4 or parts[:2]!=["api","practices"]:self._json({"error":"Endpoint inesistente"},404);return
-  pid,action=parts[2],parts[3];body=self._body();actor=str(body.get("actor") or "operatore web");outcome=str(body.get("outcome") or "");note=str(body.get("note") or "");attachments=body.get("attachments") if isinstance(body.get("attachments"),list) else []
+  pid,action=parts[2],parts[3];actor=self._actor();outcome=str(body.get("outcome") or "");note=str(body.get("note") or "");attachments=body.get("attachments") if isinstance(body.get("attachments"),list) else []
   if action=="tasks" and len(parts)==6 and parts[5]=="progress":self._api(lambda:self.service.save_task_progress(pid,parts[4],actor,note,attachments))
   elif action=="tasks" and len(parts)==6 and parts[5]=="complete":self._api(lambda:self.service.complete_task(pid,parts[4],actor,outcome or "COMPLETATO",note,attachments))
   elif action=="tasks" and len(parts)==6 and parts[5]=="assign":self._api(lambda:self.service.assign_task(pid,parts[4],str(body.get("assignee") or ""),actor))
@@ -53,12 +81,17 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
  def _body(self):
   try:l=int(self.headers.get("Content-Length","0"));return json.loads(self.rfile.read(l)) if l else {}
   except (ValueError,json.JSONDecodeError):return {}
+ def _redirect(self,path):self.send_response(303);self.send_header("Location",path);self.end_headers()
  def _static(self,path):
   relative="index.html" if path in {"/","/index.html"} else path.lstrip("/");target=(FRONTEND/relative).resolve()
   if FRONTEND not in target.parents or not target.is_file():self._json({"error":"Risorsa inesistente"},404);return
-  data=target.read_bytes();self.send_response(200);self.send_header("Content-Type",mimetypes.guess_type(target.name)[0] or "application/octet-stream");self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
- def _json(self,payload,status=200):
-  data=json.dumps(payload,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
+  data=target.read_bytes();content_type=mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+  if target.suffix==".html" and target.name!="login.html":data=data.replace(b"</body>",b'<script src="/auth-context.js"></script></body>')
+  self.send_response(200);self.send_header("Content-Type",content_type);self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
+ def _json(self,payload,status=200,headers=None):
+  data=json.dumps(payload,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type","application/json; charset=utf-8")
+  for key,value in (headers or {}).items():self.send_header(key,value)
+  self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
 def _migrate_nonconformities(service):
  changed=False
  with service._lock:
