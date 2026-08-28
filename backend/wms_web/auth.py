@@ -6,12 +6,29 @@ from threading import RLock
 
 
 @dataclass(frozen=True)
+class Group:
+    id: str
+    name: str
+    role: str
+
+
+GROUPS = {
+    "manager": Group("manager", "Manager", "MANAGER"),
+    "contabili": Group("contabili", "Contabili", "OPERATORE"),
+    "segreteria": Group("segreteria", "Segreteria", "OPERATORE"),
+    "validatori-contabili": Group("validatori-contabili", "Validatori contabili", "VALIDATORE"),
+}
+
+
+@dataclass(frozen=True)
 class Membership:
     id: str
-    group: str
-    role: str
-    actor: str
+    group_id: str
     label: str
+
+    @property
+    def group(self) -> Group:
+        return GROUPS[self.group_id]
 
 
 @dataclass(frozen=True)
@@ -25,32 +42,23 @@ class Account:
 
 DEMO_ACCOUNTS = {
     "mario.demo": Account(
-        username="mario.demo",
-        password="demo",
-        display_name="Mario Demo",
-        default_membership_id="manager",
-        memberships=(
-            Membership("manager", "Manager", "MANAGER", "marta.manager", "Manager"),
-            Membership("contabili", "Contabili", "OPERATORE", "anna.operatore", "Operatore · Contabili"),
+        "mario.demo", "demo", "Mario Demo", "mario-manager",
+        (
+            Membership("mario-manager", "manager", "Manager"),
+            Membership("mario-contabili", "contabili", "Operatore · Contabili"),
         ),
     ),
     "valeria.demo": Account(
-        username="valeria.demo",
-        password="demo",
-        display_name="Valeria Demo",
-        default_membership_id="validatori",
-        memberships=(
-            Membership("validatori", "Validatori contabili", "VALIDATORE", "valeria.validatore", "Validatore · Contabili"),
-        ),
+        "valeria.demo", "demo", "Valeria Demo", "valeria-validatori",
+        (Membership("valeria-validatori", "validatori-contabili", "Validatore · Contabili"),),
     ),
     "luca.demo": Account(
-        username="luca.demo",
-        password="demo",
-        display_name="Luca Demo",
-        default_membership_id="contabili",
-        memberships=(
-            Membership("contabili", "Contabili", "OPERATORE", "luca.operatore", "Operatore · Contabili"),
-        ),
+        "luca.demo", "demo", "Luca Demo", "luca-contabili",
+        (Membership("luca-contabili", "contabili", "Operatore · Contabili"),),
+    ),
+    "sara.demo": Account(
+        "sara.demo", "demo", "Sara Demo", "sara-segreteria",
+        (Membership("sara-segreteria", "segreteria", "Operatore · Segreteria"),),
     ),
 }
 
@@ -66,33 +74,34 @@ class SessionRegistry:
             raise PermissionError("Credenziali non valide")
         token = secrets.token_urlsafe(32)
         with self._lock:
-            self._sessions[token] = {
-                "username": account.username,
-                "membership_id": account.default_membership_id,
-            }
+            self._sessions[token] = {"username": account.username, "membership_id": account.default_membership_id}
         return token, self.describe(token)
 
     def logout(self, token: str | None):
-        if not token:
-            return
-        with self._lock:
-            self._sessions.pop(token, None)
+        if token:
+            with self._lock:
+                self._sessions.pop(token, None)
+
+    def principal(self, token: str | None):
+        account, membership = self._resolve(token)
+        group = membership.group
+        return {
+            "username": account.username,
+            "display_name": account.display_name,
+            "membership_id": membership.id,
+            "group_id": group.id,
+            "group": group.name,
+            "role": group.role,
+        }
 
     def describe(self, token: str | None):
         account, membership = self._resolve(token)
         return {
             "authenticated": True,
-            "user": {
-                "username": account.username,
-                "display_name": account.display_name,
-            },
+            "user": {"username": account.username, "display_name": account.display_name},
             "active": self._membership_payload(membership),
             "memberships": [self._membership_payload(item) for item in account.memberships],
         }
-
-    def actor(self, token: str | None) -> str:
-        _, membership = self._resolve(token)
-        return membership.actor
 
     def switch(self, token: str | None, membership_id: str):
         account, _ = self._resolve(token)
@@ -110,20 +119,13 @@ class SessionRegistry:
             if state is None:
                 raise PermissionError("Sessione non autenticata")
             account = DEMO_ACCOUNTS[state["username"]]
-            membership = next(
-                item for item in account.memberships if item.id == state["membership_id"]
-            )
+            membership = next(item for item in account.memberships if item.id == state["membership_id"])
             return account, membership
 
     @staticmethod
     def _membership_payload(membership: Membership):
-        return {
-            "id": membership.id,
-            "group": membership.group,
-            "role": membership.role,
-            "actor": membership.actor,
-            "label": membership.label,
-        }
+        group = membership.group
+        return {"id": membership.id, "group_id": group.id, "group": group.name, "role": group.role, "label": membership.label}
 
 
 AUTH = SessionRegistry()
