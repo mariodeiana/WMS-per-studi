@@ -7,9 +7,10 @@ from urllib.parse import parse_qs,unquote,urlparse
 from backend.wms_core.models import NonConformity,UserRole
 from backend.wms_core.workflow import WorkflowError,define_corrective_action
 from backend.wms_web.auth import AUTH
+from backend.wms_web.admin_config import AdminConfigStore
 from backend.wms_web.organization_service import OrganizationalPracticeService
 from backend.wms_web.service import DEMO_PRACTICE_ID
-ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DEMO_STATE=ROOT/".wms-demo-state.pkl"
+ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DEMO_STATE=ROOT/".wms-demo-state.pkl";CONFIG_STATE=ROOT/".wms-config.json";CONFIG=AdminConfigStore(CONFIG_STATE)
 class WMSRequestHandler(BaseHTTPRequestHandler):
  service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=True);debug_mode=False
  def _token(self):
@@ -19,6 +20,10 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
  def _require_session(self):
   try:return self._session()
   except PermissionError:return None
+ def _require_admin(self):
+  principal=self._principal()
+  if principal["role"]!="AMMINISTRATORE":raise PermissionError("Configurazione riservata agli amministratori WMS")
+  return principal
  def do_GET(self):
   parsed=urlparse(self.path);path=parsed.path;query=parse_qs(parsed.query)
   if path=="/api/health":self._json({"status":"ok"});return
@@ -28,6 +33,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    except PermissionError as e:self._json({"error":str(e)},401)
    return
   if path.startswith("/api/") and not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
+  if path=="/api/admin/config":self._api(lambda:(self._require_admin(),CONFIG.snapshot())[1]);return
   if path=="/api/manager/practices":self._api(lambda:self.service.manager_practices_for(self._principal()));return
   if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue_for(self._principal()));return
   if path=="/api/validation-history":self._api(lambda:self.service.validation_history_for(self._principal()));return
@@ -59,6 +65,8 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    except PermissionError as e:self._json({"error":str(e)},403)
    return
   if not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
+  if path.startswith("/api/admin/config/"):
+   self._api(lambda:self._admin_config(path,body));return
   parts=[unquote(x) for x in path.split("/") if x]
   if len(parts)<4 or parts[:2]!=["api","practices"]:self._json({"error":"Endpoint inesistente"},404);return
   pid,action=parts[2],parts[3];principal=self._principal();outcome=str(body.get("outcome") or "");note=str(body.get("note") or "");attachments=body.get("attachments") if isinstance(body.get("attachments"),list) else []
@@ -70,6 +78,11 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   elif action=="validate" and len(parts)==4:self._api(lambda:self.service.validate_for(pid,principal,outcome or "VALIDATA",note,attachments))
   elif action=="close" and len(parts)==4:self._api(lambda:self.service.close_for(pid,principal,outcome or "CHIUSA",note,attachments))
   else:self._json({"error":"Endpoint inesistente"},404)
+ def _admin_config(self,path,body):
+  self._require_admin();parts=[unquote(x) for x in path.split("/") if x];entity=parts[3] if len(parts)>3 else ""
+  if len(parts)==5 and parts[4]=="delete":return CONFIG.delete(entity,str(body.get("id") or ""))
+  if len(parts)==4:return CONFIG.save(entity,body)
+  raise KeyError(path)
  def _corrective_action(self,pid,principal,body):
   if principal["role"]!="MANAGER":raise PermissionError("Solo un manager può definire una azione correttiva")
   with self.service._lock:
@@ -81,6 +94,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   try:self._json(op())
   except KeyError as e:self._json({"error":str(e.args[0])},404)
   except WorkflowError as e:self._json({"error":str(e)},409)
+  except ValueError as e:self._json({"error":str(e)},409)
   except PermissionError as e:self._json({"error":str(e)},403)
  def _body(self):
   try:l=int(self.headers.get("Content-Length","0"));return json.loads(self.rfile.read(l)) if l else {}
@@ -106,7 +120,7 @@ def _migrate_nonconformities(service):
   if changed:service._persist()
 def create_server(host="127.0.0.1",port=8000,debug=False):_migrate_nonconformities(WMSRequestHandler.service);WMSRequestHandler.debug_mode=debug;return ThreadingHTTPServer((host,port),WMSRequestHandler)
 def main():
- parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);parser.add_argument("--debug",action="store_true");args=parser.parse_args();server=create_server(args.host,args.port,args.debug);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})");print(f"Stato demo persistente: {DEMO_STATE}");print(f"Modalità debug: {'ON' if args.debug else 'OFF'}")
+ parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);parser.add_argument("--debug",action="store_true");args=parser.parse_args();server=create_server(args.host,args.port,args.debug);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})");print(f"Stato demo persistente: {DEMO_STATE}");print(f"Configurazione: {CONFIG_STATE}");print(f"Modalità debug: {'ON' if args.debug else 'OFF'}")
  try:server.serve_forever()
  except KeyboardInterrupt:pass
  finally:server.server_close()
