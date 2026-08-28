@@ -8,7 +8,7 @@ from typing import Optional
 class PracticeStatus(str, Enum):
     DA_FARE="DA_FARE"; IN_LAVORAZIONE="IN_LAVORAZIONE"; COMPLETATA="COMPLETATA"; DA_VALIDARE="DA_VALIDARE"; VALIDATA="VALIDATA"; NON_VALIDATA="NON_VALIDATA"; CHIUSA="CHIUSA"
 class TaskStatus(str, Enum): DA_FARE="DA_FARE"; IN_LAVORAZIONE="IN_LAVORAZIONE"; COMPLETATO="COMPLETATO"
-class UserRole(str, Enum): OPERATORE="OPERATORE"; VALIDATORE="VALIDATORE"; MANAGER="MANAGER"
+class UserRole(str, Enum): OPERATORE="OPERATORE"; VALIDATORE="VALIDATORE"; MANAGER="MANAGER"; DECISORE="DECISORE"; AMMINISTRATORE="AMMINISTRATORE"
 class NonConformityStatus(str, Enum): APERTA="APERTA"; IN_SANATORIA="IN_SANATORIA"; DA_VERIFICARE="DA_VERIFICARE"; CHIUSA="CHIUSA"
 @dataclass
 class AuditEvent:
@@ -30,7 +30,14 @@ class NonConformity:
     id:str; reason:str; opened_by:str; opened_at:datetime=field(default_factory=lambda:datetime.now(timezone.utc)); status:NonConformityStatus=NonConformityStatus.APERTA; source:str="VALIDATION"; corrective_actions:list[CorrectiveAction]=field(default_factory=list); closed_at:Optional[datetime]=None; closed_by:Optional[str]=None
 @dataclass
 class Task:
-    code:str; title:str; required:bool=True; status:TaskStatus=TaskStatus.DA_FARE; assignee:Optional[str]=None; completed_by:Optional[str]=None; depends_on:tuple[str,...]=(); result_id:Optional[str]=None; instructions:str=""; work_note:str=""; work_notes:list[TaskNote]=field(default_factory=list); progress_evidence_ids:list[str]=field(default_factory=list); reopen_reason:str=""
+    code:str; title:str; required:bool=True; status:TaskStatus=TaskStatus.DA_FARE
+    # Responsabilità organizzativa: sempre il gruppo, definito nel modello di pratica.
+    assigned_group:Optional[str]=None
+    # Dispatch operativo: utente che ha preso in carico il task; resta opzionale.
+    claimed_by:Optional[str]=None
+    # Campo legacy conservato solo per migrare vecchi stati pickle; non va più usato come assegnazione.
+    assignee:Optional[str]=None
+    completed_by:Optional[str]=None; depends_on:tuple[str,...]=(); result_id:Optional[str]=None; instructions:str=""; work_note:str=""; work_notes:list[TaskNote]=field(default_factory=list); progress_evidence_ids:list[str]=field(default_factory=list); reopen_reason:str=""
 @dataclass
 class Practice:
     id:str; practice_type_code:str; client_id:str; period_start:str; period_end:str; due_date:str; requires_validation:bool=True; status:PracticeStatus=PracticeStatus.DA_FARE; tasks:list[Task]=field(default_factory=list); audit:list[AuditEvent]=field(default_factory=list); validated_by:Optional[str]=None; validated_at:Optional[datetime]=None; results:list[WorkResult]=field(default_factory=list); evidence:list[Evidence]=field(default_factory=list); validation_result_id:Optional[str]=None; closure_result_id:Optional[str]=None; nonconformities:list[NonConformity]=field(default_factory=list)
