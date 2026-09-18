@@ -35,12 +35,26 @@ class Task:
     assigned_group:Optional[str]=None
     # Dispatch operativo: utente che ha preso in carico il task; resta opzionale.
     claimed_by:Optional[str]=None
+    due_date:Optional[str]=None
     # Campo legacy conservato solo per migrare vecchi stati pickle; non va più usato come assegnazione.
     assignee:Optional[str]=None
-    completed_by:Optional[str]=None; depends_on:tuple[str,...]=(); result_id:Optional[str]=None; instructions:str=""; work_note:str=""; work_notes:list[TaskNote]=field(default_factory=list); progress_evidence_ids:list[str]=field(default_factory=list); reopen_reason:str=""
+    completed_by:Optional[str]=None
+    # Legacy: mantenuto temporaneamente per compatibilità con pratiche esistenti.
+    depends_on:tuple[str,...]=()
+    # Workflow configurabile: esiti ammessi e transizioni verso le attività successive.
+    outcomes:tuple[str,...]=()
+    transitions:dict[str,tuple[str,...]]=field(default_factory=dict)
+    # Indica se l'attività appartiene al percorso attualmente attivato.
+    active:bool=True
+    result_id:Optional[str]=None
+    instructions:str=""
+    work_note:str=""
+    work_notes:list[TaskNote]=field(default_factory=list)
+    progress_evidence_ids:list[str]=field(default_factory=list)
+    reopen_reason:str=""
 @dataclass
 class Practice:
     id:str; practice_type_code:str; client_id:str; period_start:str; period_end:str; due_date:str; requires_validation:bool=True; status:PracticeStatus=PracticeStatus.DA_FARE; tasks:list[Task]=field(default_factory=list); audit:list[AuditEvent]=field(default_factory=list); validated_by:Optional[str]=None; validated_at:Optional[datetime]=None; results:list[WorkResult]=field(default_factory=list); evidence:list[Evidence]=field(default_factory=list); validation_result_id:Optional[str]=None; closure_result_id:Optional[str]=None; nonconformities:list[NonConformity]=field(default_factory=list)
     def record(self,event_type:str,actor:str,**details:object)->None:self.audit.append(AuditEvent(event_type=event_type,actor=actor,details=details))
     @property
-    def required_tasks_complete(self)->bool:return all(task.status==TaskStatus.COMPLETATO for task in self.tasks if task.required)
+    def required_tasks_complete(self)->bool:return all(task.status==TaskStatus.COMPLETATO for task in self.tasks if task.required and getattr(task,"active",True))

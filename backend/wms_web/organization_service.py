@@ -104,6 +104,7 @@ class OrganizationalPracticeService(PracticeService):
                     # Un task preso in carico da un collega resta del gruppo ma non appare tra i propri task attivi.
                     if task.claimed_by and task.claimed_by != actor and task.status.value != "COMPLETATO":continue
                     row={"practice_id":practice.id,"practice_type_code":practice.practice_type_code,"client_id":practice.client_id,"due_date":practice.due_date,**self._serialize_task(task)}
+                    row["due_date"] = getattr(task, "due_date", None) or practice.due_date
                     if task.status.value!="COMPLETATO":row["queue_section"]="ACTIVE";rows.append(row);continue
                     result=results.get(task.result_id)
                     if result and result.actor==actor and result.timestamp>=cutoff:

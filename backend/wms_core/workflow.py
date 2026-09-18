@@ -44,6 +44,7 @@ def save_task_progress(p,task_code,actor,actor_role,note="",attachments=None):
  _require_role(actor_role,UserRole.OPERATORE,"Solo un operatore può lavorare i task")
  if p.status not in {PracticeStatus.DA_FARE,PracticeStatus.IN_LAVORAZIONE}:raise WorkflowError("Il task non può essere lavorato nello stato corrente")
  t=_task(p,task_code)
+ if not getattr(t,"active",True):raise WorkflowError("Il task non è attivo nel percorso corrente")
  if t.assignee!=actor:raise WorkflowError("Il task può essere lavorato solo dall'operatore assegnatario")
  if t.status==TaskStatus.COMPLETATO:raise WorkflowError("Il task è già completato")
  if p.status==PracticeStatus.DA_FARE:start_practice(p,actor)
@@ -54,12 +55,22 @@ def complete_task(p,task_code,actor,actor_role,outcome="COMPLETATO",note="",atta
  _require_role(actor_role,UserRole.OPERATORE,"Solo un operatore può completare i task")
  if p.status not in {PracticeStatus.IN_LAVORAZIONE,PracticeStatus.DA_FARE}:raise WorkflowError("I task non possono essere completati nello stato corrente")
  t=_task(p,task_code)
+ if not getattr(t,"active",True):raise WorkflowError("Il task non è attivo nel percorso corrente")
  if t.assignee!=actor:raise WorkflowError("Il task può essere completato solo dall'operatore assegnatario")
  if t.status==TaskStatus.COMPLETATO:raise WorkflowError("Il task è già completato")
+ allowed_outcomes=tuple(getattr(t,"outcomes",()) or ())
+ if allowed_outcomes and outcome not in allowed_outcomes:
+  raise WorkflowError(f"Esito non valido per {t.code}: {outcome}")
  missing=[c for c in t.depends_on if _task(p,c).status!=TaskStatus.COMPLETATO]
  if missing:raise WorkflowError(f"Dipendenze non completate: {', '.join(missing)}")
  if p.status==PracticeStatus.DA_FARE:start_practice(p,actor)
  r=_record_result(p,actor=actor,actor_role=actor_role,outcome=outcome,note=note,attachments=attachments,action="TASK",task_code=t.code,existing_evidence_ids=t.progress_evidence_ids);t.status=TaskStatus.COMPLETATO;t.completed_by=actor;t.result_id=r.id;t.work_note="";t.reopen_reason="";t.progress_evidence_ids=[];p.record("TASK_COMPLETED",actor,task_code=t.code,result_id=r.id)
+ destinations=list(getattr(t,"transitions",{}).get(outcome,()))
+ if destinations:
+  for destination in destinations:
+   next_task=_task(p,destination)
+   next_task.active=True
+  p.record("TASK_TRANSITION_SELECTED",actor,task_code=t.code,outcome=outcome,destinations=destinations)
  if p.required_tasks_complete:
   nc=_open_nc(p)
   if nc and nc.status==NonConformityStatus.IN_SANATORIA:

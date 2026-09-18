@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from threading import RLock
+from backend.wms_core.templates import PRACTICE_TEMPLATES
+from backend.wms_web.config_models import validate_model
 
 ROLES = ["AMMINISTRATORE", "DECISORE", "MANAGER", "VALIDATORE", "OPERATORE"]
-ENTITIES = {"users", "groups", "memberships", "assignment_policies", "practice_types"}
+ENTITIES = {"users", "groups", "memberships", "assignment_policies", "practice_types", "clients"}
 
 DEFAULT_DATA = {
     "groups": [
@@ -32,6 +34,7 @@ DEFAULT_DATA = {
     "assignment_policies": [
         {"id": "self-pick", "name": "Presa in carico volontaria", "strategy": "SELF_PICK", "description": "Il task resta al gruppo finché un membro lo prende in carico.", "active": True}
     ],
+    "clients": [],
     "practice_types": [
         {"id": "lipe", "code": "LIPE", "name": "LIPE", "description": "Modello dimostrativo LIPE", "active": True}
     ],
@@ -50,16 +53,44 @@ class AdminConfigStore:
                 raw = json.loads(self.path.read_text(encoding="utf-8"))
                 for key in ENTITIES:
                     raw.setdefault(key, [])
-                return raw
+                return self._upgrade(raw)
             except (OSError, json.JSONDecodeError):
                 pass
         data = json.loads(json.dumps(DEFAULT_DATA))
-        self._persist(data)
+        return self._upgrade(data)
+
+    def _upgrade(self, data):
+        if data.get("catalog_version", 0) < 1:
+            for code, tasks in PRACTICE_TEMPLATES.items():
+                row = next((r for r in data["practice_types"] if r.get("code") == code), None)
+                if row is None:
+                    row = {"id": code, "code": code, "name": {"LIPE_TRIM":"LIPE trimestrale", "F24_MENSILE":"F24 mensile", "RICONC_BANCA":"Riconciliazione bancaria", "CU_ANNUALE":"Certificazione Unica annuale", "BILANCIO_VER":"Verifica di bilancio"}[code], "active": True}
+                    data["practice_types"].append(row)
+                row.setdefault("tasks", [{"code": c, "title": t, "instructions": i, "assigned_group": "contabili", "required": True, "depends_on": [], "days_before_due": 0} for c, t, i in tasks])
+                row.setdefault("requires_validation", True)
+            # Preserve the older LIPE entry and make its existing editor usable too.
+            for row in data["practice_types"]:
+                if row.get("code") == "LIPE" and "tasks" not in row:
+                    row["tasks"] = [{"code": c, "title": t, "instructions": i, "assigned_group": "contabili", "required": True, "depends_on": [], "days_before_due": 0} for c, t, i in PRACTICE_TEMPLATES["LIPE_TRIM"]]
+                    row.setdefault("requires_validation", True)
+            data["catalog_version"] = 1
+            self._persist(data)
         return data
+
+    def sync_clients(self, client_ids):
+        with self._lock:
+            existing = {r["id"] for r in self._data["clients"]}
+            missing = sorted(set(client_ids) - existing)
+            for code in missing:
+                self._data["clients"].append({"id": code, "name": code, "tax_code": "", "vat_number": "", "email": "", "active": True})
+            if missing:
+                self._persist()
 
     def _persist(self, data=None):
         data = data if data is not None else self._data
-        self.path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(self.path)
 
     def snapshot(self):
         with self._lock:
@@ -72,8 +103,9 @@ class AdminConfigStore:
 
     def save(self, entity: str, item: dict):
         self._check_entity(entity)
-        clean = self._validate(entity, item)
         with self._lock:
+            previous = next((r for r in self._data[entity] if r["id"] == item.get("id")), {})
+            clean = self._validate(entity, {**previous, **item})
             rows = self._data[entity]
             index = next((i for i, row in enumerate(rows) if row["id"] == clean["id"]), None)
             if index is None:
@@ -90,6 +122,8 @@ class AdminConfigStore:
                 raise ValueError("Il gruppo è utilizzato da una o più appartenenze: disattivarlo invece di eliminarlo")
             if entity == "users" and any(m["user_id"] == item_id for m in self._data["memberships"]):
                 raise ValueError("L'utente possiede appartenenze: disattivarlo invece di eliminarlo")
+            if entity == "groups" and any(t.get("assigned_group") == item_id for m in self._data["practice_types"] for t in m.get("tasks", [])):
+                raise ValueError("Il gruppo è utilizzato da un modello di pratica")
             before = len(self._data[entity])
             self._data[entity] = [row for row in self._data[entity] if row["id"] != item_id]
             if len(self._data[entity]) == before:
@@ -122,7 +156,11 @@ class AdminConfigStore:
         elif entity == "assignment_policies":
             if not str(item.get("name") or "").strip(): raise ValueError("Il nome della politica è obbligatorio")
             if not str(item.get("strategy") or "").strip(): raise ValueError("La strategia è obbligatoria")
+        elif entity == "clients":
+            if not str(item.get("name") or "").strip(): raise ValueError("Il nome del cliente è obbligatorio")
         elif entity == "practice_types":
             if not str(item.get("code") or "").strip(): raise ValueError("Il codice pratica è obbligatorio")
             if not str(item.get("name") or "").strip(): raise ValueError("Il nome del tipo pratica è obbligatorio")
+            if any(r["id"] != item_id and r.get("code") == item["code"] for r in self._data[entity]): raise ValueError("Codice tipo pratica già utilizzato")
+            validate_model(item, self._data["groups"])
         return item

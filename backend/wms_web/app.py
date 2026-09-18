@@ -8,6 +8,7 @@ from backend.wms_core.models import NonConformity,UserRole
 from backend.wms_core.workflow import WorkflowError,define_corrective_action
 from backend.wms_web.auth import AUTH
 from backend.wms_web.admin_config import AdminConfigStore
+from backend.wms_web.config_models import create_configured_practice
 from backend.wms_web.organization_service import OrganizationalPracticeService
 from backend.wms_web.service import DEMO_PRACTICE_ID
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DEMO_STATE=ROOT/".wms-demo-state.pkl";CONFIG_STATE=ROOT/".wms-config.json";CONFIG=AdminConfigStore(CONFIG_STATE)
@@ -33,6 +34,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    except PermissionError as e:self._json({"error":str(e)},401)
    return
   if path.startswith("/api/") and not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
+  if path=="/api/admin/practices":self._api(lambda:(self._require_admin(),self._configured_practices())[1]);return
   if path=="/api/admin/config":self._api(lambda:(self._require_admin(),CONFIG.snapshot())[1]);return
   if path=="/api/manager/practices":self._api(lambda:self.service.manager_practices_for(self._principal()));return
   if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue_for(self._principal()));return
@@ -41,7 +43,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   if path.startswith("/api/evidence/"):
    eid=unquote(path[len("/api/evidence/"):]);disp=query.get("disposition",["inline"])[0]
    try:
-    item=self.service.evidence_content(eid);data=base64.b64decode(item.content_base64) if item.content_base64 else b"";self.send_response(200);self.send_header("Content-Type",item.content_type or "application/octet-stream");self.send_header("Content-Disposition",f'{"attachment" if disp=="attachment" else "inline"}; filename="{item.filename}"');self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
+    item=self.service.evidence_content(eid,query.get("practice",[None])[0]);data=base64.b64decode(item.content_base64) if item.content_base64 else b"";self.send_response(200);self.send_header("Content-Type",item.content_type or "application/octet-stream");self.send_header("Content-Disposition",f'{"attachment" if disp=="attachment" else "inline"}; filename="{item.filename}"');self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
    except KeyError as e:self._json({"error":str(e.args[0])},404)
    return
   if path.startswith("/api/tasks/"):
@@ -65,6 +67,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    except PermissionError as e:self._json({"error":str(e)},403)
    return
   if not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
+  if path=="/api/admin/practices":self._api(lambda:create_configured_practice(self.service,CONFIG,body,self._principal()));return
   if path.startswith("/api/admin/config/"):
    self._api(lambda:self._admin_config(path,body));return
   parts=[unquote(x) for x in path.split("/") if x]
@@ -78,10 +81,25 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   elif action=="validate" and len(parts)==4:self._api(lambda:self.service.validate_for(pid,principal,outcome or "VALIDATA",note,attachments))
   elif action=="close" and len(parts)==4:self._api(lambda:self.service.close_for(pid,principal,outcome or "CHIUSA",note,attachments))
   else:self._json({"error":"Endpoint inesistente"},404)
+ def _configured_practices(self):
+  with self.service._lock:
+   return [{"id":p.id,"client_id":p.client_id,"practice_type_code":p.practice_type_code,"period_start":p.period_start,"period_end":p.period_end,"due_date":p.due_date,"status":p.status.value} for p in reversed(list(self.service._practices.values()))]
  def _admin_config(self,path,body):
   self._require_admin();parts=[unquote(x) for x in path.split("/") if x];entity=parts[3] if len(parts)>3 else ""
-  if len(parts)==5 and parts[4]=="delete":return CONFIG.delete(entity,str(body.get("id") or ""))
-  if len(parts)==4:return CONFIG.save(entity,body)
+  if len(parts)==5 and parts[4]=="delete":
+   with CONFIG._lock, self.service._lock:
+    item_id=str(body.get("id") or "")
+    if entity=="clients" and any(p.client_id==item_id for p in self.service._practices.values()):raise ValueError("Il cliente ha pratiche collegate: disattivarlo invece di eliminarlo")
+    if entity=="practice_types":
+     model=next((m for m in CONFIG.list(entity) if m["id"]==item_id),None)
+     if model and any(p.practice_type_code==model["code"] for p in self.service._practices.values()):raise ValueError("Il modello ha pratiche collegate: disattivarlo invece di eliminarlo")
+    return CONFIG.delete(entity,item_id)
+  if len(parts)==4:
+   with CONFIG._lock, self.service._lock:
+    if entity=="practice_types":
+     old=next((m for m in CONFIG.list(entity) if m["id"]==body.get("id")),None)
+     if old and body.get("code",old["code"])!=old["code"] and any(p.practice_type_code==old["code"] for p in self.service._practices.values()):raise ValueError("Il codice del modello è usato da pratiche esistenti e non può essere cambiato")
+    return CONFIG.save(entity,body)
   raise KeyError(path)
  def _corrective_action(self,pid,principal,body):
   if principal["role"]!="MANAGER":raise PermissionError("Solo un manager può definire una azione correttiva")
@@ -118,7 +136,11 @@ def _migrate_nonconformities(service):
    if p.status.value!='NON_VALIDATA' or p.nonconformities:continue
    validation=next((r for r in reversed(p.results) if r.action=='VALIDATION' and r.outcome=='NON_VALIDATA'),None);reason=validation.note if validation else 'Non conformità rilevata in validazione';actor=validation.actor if validation else 'sistema';nc=NonConformity(id='NC-0001',reason=reason,opened_by=actor);p.nonconformities.append(nc);p.record('NONCONFORMITY_OPENED',actor,nc_id=nc.id,reason=reason,source='VALIDATION',migrated=True);changed=True
   if changed:service._persist()
-def create_server(host="127.0.0.1",port=8000,debug=False):_migrate_nonconformities(WMSRequestHandler.service);WMSRequestHandler.debug_mode=debug;return ThreadingHTTPServer((host,port),WMSRequestHandler)
+def create_server(host="127.0.0.1",port=8000,debug=False):
+ _migrate_nonconformities(WMSRequestHandler.service)
+ CONFIG.sync_clients(p.client_id for p in WMSRequestHandler.service._practices.values())
+ WMSRequestHandler.debug_mode=debug
+ return ThreadingHTTPServer((host,port),WMSRequestHandler)
 def main():
  parser=argparse.ArgumentParser(description="Web app locale WMS");parser.add_argument("--host",default="127.0.0.1");parser.add_argument("--port",type=int,default=8000);parser.add_argument("--debug",action="store_true");args=parser.parse_args();server=create_server(args.host,args.port,args.debug);print(f"WMS disponibile su http://{args.host}:{server.server_port}/ (pratica {DEMO_PRACTICE_ID})");print(f"Stato demo persistente: {DEMO_STATE}");print(f"Configurazione: {CONFIG_STATE}");print(f"Modalità debug: {'ON' if args.debug else 'OFF'}")
  try:server.serve_forever()

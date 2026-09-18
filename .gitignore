@@ -1,2 +1,12 @@
 .wms-demo-state.pkl
 .wms-demo-state.pkl.tmp
+
+# Python runtime
+__pycache__/
+*.py[cod]
+
+# WMS local configuration
+.wms-config.json
+
+# Local development backups
+backups/

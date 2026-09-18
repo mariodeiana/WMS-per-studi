@@ -5,6 +5,7 @@ import pickle
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
+from urllib.parse import urlencode
 
 from backend.wms_core.models import Practice, UserRole
 from backend.wms_core.templates import PRACTICE_TEMPLATES, build_lipe_trim_tasks, build_tasks
@@ -175,13 +176,20 @@ def _date(value):
 def _task(task):
     return {
         "code": task.code,
+        "due_date": getattr(task, "due_date", None),
         "title": task.title,
         "instructions": task.instructions,
         "required": task.required,
         "status": task.status.value,
+        "active": getattr(task, "active", True),
         "assignee": task.assignee,
         "completed_by": task.completed_by,
         "depends_on": list(task.depends_on),
+        "outcomes": list(getattr(task, "outcomes", ())),
+        "transitions": {
+            outcome: list(destinations)
+            for outcome, destinations in getattr(task, "transitions", {}).items()
+        },
         "result_id": task.result_id,
         "work_note": task.work_note,
         "work_notes": [{"actor": n.actor, "note": n.note, "at": _date(n.at)} for n in task.work_notes],
@@ -223,8 +231,8 @@ def _evidence(item):
         "source": item.source,
         "related_practice_id": item.related_practice_id,
         "related_task_code": item.related_task_code,
-        "preview_url": f"/api/evidence/{item.id}?disposition=inline",
-        "download_url": f"/api/evidence/{item.id}?disposition=attachment",
+        "preview_url": f"/api/evidence/{item.id}?{urlencode(dict(practice=item.related_practice_id, disposition="inline"))}",
+        "download_url": f"/api/evidence/{item.id}?{urlencode(dict(practice=item.related_practice_id, disposition="attachment"))}",
     }
 
 
@@ -474,12 +482,14 @@ class PracticeService:
                 detail["evidence"] = [_evidence(item) for item in practice.evidence]
             return detail
 
-    def evidence_content(self, evidence_id):
+    def evidence_content(self, evidence_id, practice_id=None):
         with self._lock:
-            for practice in self._practices.values():
-                for item in practice.evidence:
-                    if item.id == evidence_id:
-                        return item
+            practices = [self._find(practice_id)] if practice_id is not None else self._practices.values()
+            matches = [item for practice in practices for item in practice.evidence if item.id == evidence_id]
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                raise KeyError(f"Evidenza ambigua: specificare la pratica per {evidence_id}")
             raise KeyError(f"Evidenza inesistente: {evidence_id}")
 
     def save_task_progress(self, practice_id, task_code, actor, note="", attachments=None):

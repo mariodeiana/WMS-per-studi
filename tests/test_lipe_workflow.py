@@ -78,6 +78,65 @@ class LipeWorkflowTest(unittest.TestCase):
         complete_task(practice, "INDEPENDENT", "anna", UserRole.OPERATORE)
         with self.assertRaises(WorkflowError): complete_task(practice, "SECOND", "anna", UserRole.OPERATORE)
 
+    def build_fork_practice(self) -> Practice:
+        return Practice(
+            id="P-WF-001",
+            practice_type_code="TEST_WORKFLOW",
+            client_id="CLIENT-001",
+            period_start="2026-09-01",
+            period_end="2026-09-30",
+            due_date="2026-09-30",
+            requires_validation=False,
+            tasks=[
+                Task(
+                    "A", "Verifica cliente",
+                    assignee="anna",
+                    outcomes=("SI", "NO"),
+                    transitions={"SI": ("B",), "NO": ("C",)},
+                    active=True,
+                ),
+                Task("B", "Percorso SI", assignee="anna", active=False),
+                Task("C", "Percorso NO", assignee="anna", active=False),
+            ],
+        )
+
+    def test_workflow_outcome_si_activates_only_si_branch(self):
+        practice = self.build_fork_practice()
+        complete_task(practice, "A", "anna", UserRole.OPERATORE, "SI")
+        self.assertTrue(practice.tasks[1].active)
+        self.assertFalse(practice.tasks[2].active)
+        complete_task(practice, "B", "anna", UserRole.OPERATORE)
+        self.assertEqual(practice.status, PracticeStatus.COMPLETATA)
+
+    def test_workflow_outcome_no_activates_only_no_branch(self):
+        practice = self.build_fork_practice()
+        complete_task(practice, "A", "anna", UserRole.OPERATORE, "NO")
+        self.assertFalse(practice.tasks[1].active)
+        self.assertTrue(practice.tasks[2].active)
+        complete_task(practice, "C", "anna", UserRole.OPERATORE)
+        self.assertEqual(practice.status, PracticeStatus.COMPLETATA)
+
+    def test_workflow_rejects_unconfigured_outcome(self):
+        practice = self.build_fork_practice()
+        with self.assertRaises(WorkflowError):
+            complete_task(practice, "A", "anna", UserRole.OPERATORE, "FORSE")
+
+    def test_workflow_rejects_inactive_task(self):
+        practice = self.build_fork_practice()
+        with self.assertRaises(WorkflowError):
+            complete_task(practice, "B", "anna", UserRole.OPERATORE)
+
+    def test_workflow_rejects_progress_on_inactive_task(self):
+        practice = self.build_fork_practice()
+        with self.assertRaises(WorkflowError):
+            save_task_progress(
+                practice,
+                "B",
+                "anna",
+                UserRole.OPERATORE,
+                "Tentativo anticipato",
+            )
+
     def test_executor_cannot_validate_same_practice(self):
         practice = self.build_practice(); self.complete_all_out_of_order(practice)
         with self.assertRaises(WorkflowError): validate_practice(practice, "anna", UserRole.VALIDATORE)
