@@ -1,11 +1,22 @@
+import tempfile
 import unittest
+from pathlib import Path
 
+from backend.wms_web.admin_config import AdminConfigStore
 from backend.wms_web.auth import SessionRegistry
 
 
 class SessionRegistryTest(unittest.TestCase):
     def setUp(self):
-        self.auth = SessionRegistry()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.config = AdminConfigStore(
+            Path(self.tmp.name) / "config.json",
+            seed_demo=True,
+        )
+        self.auth = SessionRegistry(self.config)
+
+    def tearDown(self):
+        self.tmp.cleanup()
 
     def test_login_uses_default_membership(self):
         token, session = self.auth.login("mario.demo", "demo")

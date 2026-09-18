@@ -1,74 +1,13 @@
 from __future__ import annotations
 
 import secrets
-from dataclasses import dataclass
 from threading import RLock
 
 from backend.wms_web.passwords import verify_password
 
 
-@dataclass(frozen=True)
-class Group:
-    id: str
-    name: str
-    role: str
-
-
-GROUPS = {
-    "amministratori-wms": Group("amministratori-wms", "Amministratori WMS", "AMMINISTRATORE"),
-    "manager": Group("manager", "Manager", "MANAGER"),
-    "contabili": Group("contabili", "Contabili", "OPERATORE"),
-    "segreteria": Group("segreteria", "Segreteria", "OPERATORE"),
-    "validatori-contabili": Group("validatori-contabili", "Validatori contabili", "VALIDATORE"),
-}
-
-
-@dataclass(frozen=True)
-class Membership:
-    id: str
-    group_id: str
-    label: str
-
-    @property
-    def group(self) -> Group:
-        return GROUPS[self.group_id]
-
-
-@dataclass(frozen=True)
-class Account:
-    username: str
-    password: str
-    display_name: str
-    default_membership_id: str
-    memberships: tuple[Membership, ...]
-
-
-DEMO_ACCOUNTS = {
-    "mario.demo": Account(
-        "mario.demo", "demo", "Mario Demo", "mario-manager",
-        (
-            Membership("mario-manager", "manager", "Manager"),
-            Membership("mario-contabili", "contabili", "Operatore · Contabili"),
-            Membership("mario-amministratore", "amministratori-wms", "Amministratore WMS"),
-        ),
-    ),
-    "valeria.demo": Account(
-        "valeria.demo", "demo", "Valeria Demo", "valeria-validatori",
-        (Membership("valeria-validatori", "validatori-contabili", "Validatore · Contabili"),),
-    ),
-    "luca.demo": Account(
-        "luca.demo", "demo", "Luca Demo", "luca-contabili",
-        (Membership("luca-contabili", "contabili", "Operatore · Contabili"),),
-    ),
-    "sara.demo": Account(
-        "sara.demo", "demo", "Sara Demo", "sara-segreteria",
-        (Membership("sara-segreteria", "segreteria", "Operatore · Segreteria"),),
-    ),
-}
-
-
 class SessionRegistry:
-    def __init__(self, config=None):
+    def __init__(self, config):
         self._lock = RLock()
         self._sessions: dict[str, dict[str, str]] = {}
         self._config = config
@@ -170,34 +109,6 @@ class SessionRegistry:
         return account, membership
 
     def _account(self, username: str):
-        if self._config is None:
-            demo = DEMO_ACCOUNTS.get(username)
-            if demo is None:
-                return None
-            return {
-                "id": demo.username,
-                "username": demo.username,
-                "display_name": demo.display_name,
-                "active": True,
-                "default_membership_id": demo.default_membership_id,
-                "password": demo.password,
-                "memberships": [
-                    {
-                        "id": m.id,
-                        "group_id": m.group_id,
-                        "label": m.label,
-                        "active": True,
-                        "group": {
-                            "id": m.group.id,
-                            "name": m.group.name,
-                            "role": m.group.role,
-                            "active": True,
-                        },
-                    }
-                    for m in demo.memberships
-                ],
-            }
-
         data = self._config.authentication_data()
 
         user = next(
@@ -230,9 +141,6 @@ class SessionRegistry:
         return {**user, "memberships": memberships}
 
     def _password_valid(self, account: dict, password: str):
-        if self._config is None:
-            return secrets.compare_digest(account["password"], password)
-
         encoded = account.get("password_hash")
         return bool(encoded) and verify_password(password, encoded)
 
@@ -246,6 +154,3 @@ class SessionRegistry:
             "role": group["role"],
             "label": membership["label"],
         }
-
-
-AUTH = SessionRegistry()
