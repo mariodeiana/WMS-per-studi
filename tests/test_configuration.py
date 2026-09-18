@@ -33,6 +33,15 @@ class ConfigurationTest(unittest.TestCase):
             self.assertEqual(snapshot[entity], [])
         self.assertEqual(snapshot["catalog_version"], 1)
 
+    def test_password_hash_is_never_exposed(self):
+        self.config.set_password_hash("mario.demo", "secret-hash")
+        public_user = next(u for u in self.config.list("users") if u["id"] == "mario.demo")
+        snapshot_user = next(u for u in self.config.snapshot()["users"] if u["id"] == "mario.demo")
+        auth_user = next(u for u in self.config.authentication_data()["users"] if u["id"] == "mario.demo")
+        self.assertNotIn("password_hash", public_user)
+        self.assertNotIn("password_hash", snapshot_user)
+        self.assertEqual(auth_user["password_hash"], "secret-hash")
+
     def test_migration_is_additive_and_idempotent(self):
         legacy=copy.deepcopy(DEFAULT_DATA)
         legacy['groups'].append({'id':'custom','name':'Custom','role':'OPERATORE'})
@@ -110,7 +119,7 @@ class ConfigurationHTTPTest(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self,path,body=None,admin=True):
-        from backend.wms_web.auth import AUTH
+        from backend.wms_web.app import AUTH
         from urllib.request import Request,urlopen
         from urllib.error import HTTPError
         token,_=AUTH.login('mario.demo','demo')
@@ -136,3 +145,35 @@ class ConfigurationHTTPTest(unittest.TestCase):
         self.assertEqual(self.request('/api/admin/config/practice_types/delete',{'id':'LIPE_TRIM'})[0],409)
         self.assertEqual(self.request('/api/admin/config/practice_types',{'id':'LIPE_TRIM','code':'CHANGED'})[0],409)
         self.assertEqual(self.request('/api/admin/config/clients',{'id':'HTTP','name':'Cliente aggiornato'})[0],200)
+
+class UserCredentialIsolationTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp = tempfile.TemporaryDirectory()
+        self.config = AdminConfigStore(Path(self.tmp.name) / "config.json", seed_demo=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_user_save_does_not_expose_or_replace_password_hash(self):
+        original_hash = next(
+            u["password_hash"]
+            for u in self.config.authentication_data()["users"]
+            if u["id"] == "mario.demo"
+        )
+
+        result = self.config.save("users", {
+            "id": "mario.demo",
+            "display_name": "Mario Modificato",
+            "password_hash": "hash-iniettato",
+        })
+
+        internal = next(
+            u for u in self.config.authentication_data()["users"]
+            if u["id"] == "mario.demo"
+        )
+
+        self.assertNotIn("password_hash", result)
+        self.assertEqual(internal["password_hash"], original_hash)
+        self.assertNotEqual(internal["password_hash"], "hash-iniettato")

@@ -5,6 +5,7 @@ from pathlib import Path
 from threading import RLock
 from backend.wms_core.templates import PRACTICE_TEMPLATES
 from backend.wms_web.config_models import validate_model
+from backend.wms_web.passwords import hash_password
 
 ROLES = ["AMMINISTRATORE", "DECISORE", "MANAGER", "VALIDATORE", "OPERATORE"]
 ENTITIES = {"users", "groups", "memberships", "assignment_policies", "practice_types", "clients"}
@@ -54,16 +55,30 @@ class AdminConfigStore:
                 raw = json.loads(self.path.read_text(encoding="utf-8"))
                 for key in ENTITIES:
                     raw.setdefault(key, [])
-                return self._upgrade(raw)
+                data = self._upgrade(raw)
+                if self._seed_demo:
+                    self._seed_demo_passwords(data)
+                return data
             except (OSError, json.JSONDecodeError):
                 pass
         if self._seed_demo:
             data = json.loads(json.dumps(DEFAULT_DATA))
-            return self._upgrade(data)
+            data = self._upgrade(data)
+            self._seed_demo_passwords(data)
+            return data
         data = {key: [] for key in ENTITIES}
         data["catalog_version"] = 1
         self._persist(data)
         return data
+
+    def _seed_demo_passwords(self, data):
+        changed = False
+        for user in data["users"]:
+            if user.get("username", "").endswith(".demo") and not user.get("password_hash"):
+                user["password_hash"] = hash_password("demo", enforce_policy=False)
+                changed = True
+        if changed:
+            self._persist(data)
 
     def _upgrade(self, data):
         if data.get("catalog_version", 0) < 1:
@@ -100,18 +115,47 @@ class AdminConfigStore:
 
     def snapshot(self):
         with self._lock:
-            return json.loads(json.dumps({**self._data, "roles": ROLES}))
+            data = json.loads(json.dumps({**self._data, "roles": ROLES}))
+            for user in data["users"]:
+                user.pop("password_hash", None)
+            return data
 
     def list(self, entity: str):
         self._check_entity(entity)
         with self._lock:
-            return json.loads(json.dumps(self._data[entity]))
+            rows = json.loads(json.dumps(self._data[entity]))
+            if entity == "users":
+                for row in rows:
+                    row.pop("password_hash", None)
+            return rows
+
+    def authentication_data(self):
+        with self._lock:
+            return json.loads(json.dumps({
+                "users": self._data["users"],
+                "groups": self._data["groups"],
+                "memberships": self._data["memberships"],
+            }))
+
+    def set_password_hash(self, user_id: str, password_hash: str):
+        with self._lock:
+            user = next((u for u in self._data["users"] if u["id"] == user_id), None)
+            if user is None:
+                raise KeyError(user_id)
+            user["password_hash"] = password_hash
+            self._persist()
 
     def save(self, entity: str, item: dict):
         self._check_entity(entity)
         with self._lock:
             previous = next((r for r in self._data[entity] if r["id"] == item.get("id")), {})
-            clean = self._validate(entity, {**previous, **item})
+            merged = {**previous, **item}
+            if entity == "users":
+                if previous.get("password_hash"):
+                    merged["password_hash"] = previous["password_hash"]
+                else:
+                    merged.pop("password_hash", None)
+            clean = self._validate(entity, merged)
             rows = self._data[entity]
             index = next((i for i, row in enumerate(rows) if row["id"] == clean["id"]), None)
             if index is None:
@@ -119,7 +163,10 @@ class AdminConfigStore:
             else:
                 rows[index] = clean
             self._persist()
-            return json.loads(json.dumps(clean))
+            result = json.loads(json.dumps(clean))
+            if entity == "users":
+                result.pop("password_hash", None)
+            return result
 
     def delete(self, entity: str, item_id: str):
         self._check_entity(entity)
@@ -154,7 +201,17 @@ class AdminConfigStore:
             if item.get("role") not in ROLES: raise ValueError("Ruolo non valido")
         elif entity == "users":
             item["username"] = str(item.get("username") or item_id).strip()
+            if not item["username"]: raise ValueError("Il login è obbligatorio")
+            if any(r["id"] != item_id and r.get("username") == item["username"] for r in self._data["users"]):
+                raise ValueError("Login già utilizzato")
             if not str(item.get("display_name") or "").strip(): raise ValueError("Il nome visualizzato è obbligatorio")
+            default_membership = str(item.get("default_membership_id") or "").strip()
+            if default_membership and not any(
+                m["id"] == default_membership and m.get("user_id") == item_id
+                for m in self._data["memberships"]
+            ):
+                raise ValueError("Appartenenza predefinita non valida")
+            item["default_membership_id"] = default_membership
         elif entity == "memberships":
             if not any(u["id"] == item.get("user_id") for u in self._data["users"]): raise ValueError("Utente inesistente")
             if not any(g["id"] == item.get("group_id") for g in self._data["groups"]): raise ValueError("Gruppo inesistente")

@@ -3,7 +3,7 @@ import threading
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-from backend.wms_web.auth import AUTH
+from backend.wms_web.app import AUTH
 from backend.wms_web.organization_service import OrganizationalPracticeService
 
 from backend.wms_web.app import WMSRequestHandler, create_server
