@@ -1,0 +1,39 @@
+services:
+  wms-dev:
+    build: .
+    image: asc-wms:dev
+    container_name: asc-wms-dev
+    environment:
+      WMS_ENV: DEV
+      WMS_DATA_DIR: /data
+    volumes:
+      - /opt/asc/wms/data/dev:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  wms-test:
+    build: .
+    image: asc-wms:test
+    container_name: asc-wms-test
+    environment:
+      WMS_ENV: TEST
+      WMS_DATA_DIR: /data
+    volumes:
+      - /opt/asc/wms/data/test:/data
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+
+  wms-prod:
+    build: .
+    image: asc-wms:prod
+    container_name: asc-wms-prod
+    environment:
+      WMS_ENV: PROD
+      WMS_DATA_DIR: /data
+    volumes:
+      - /opt/asc/wms/data/prod:/data
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
