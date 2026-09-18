@@ -303,11 +303,16 @@ def _summary(practice):
 
 
 class PracticeService:
-    def __init__(self, state_path=None, rich_demo: bool = False):
+    def __init__(self, state_path=None, rich_demo: bool = False, seed_demo: bool = True):
         self._lock = RLock()
         self._state_path = Path(state_path) if state_path else None
-        self._practices = self._load_state() if self._state_path and self._state_path.exists() else {DEMO_PRACTICE_ID: build_demo_practice()}
-        if rich_demo:
+        if self._state_path and self._state_path.exists():
+            self._practices = self._load_state()
+        elif seed_demo:
+            self._practices = {DEMO_PRACTICE_ID: build_demo_practice()}
+        else:
+            self._practices = {}
+        if rich_demo and seed_demo:
             changed = False
             for practice_id, practice in build_rich_demo_practices().items():
                 if practice_id not in self._practices:

@@ -13,7 +13,7 @@ from backend.wms_web.organization_service import OrganizationalPracticeService
 from backend.wms_web.service import DEMO_PRACTICE_ID
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DATA_DIR=Path(os.environ.get("WMS_DATA_DIR",ROOT));DATA_DIR.mkdir(parents=True,exist_ok=True);DEMO_STATE=DATA_DIR/".wms-demo-state.pkl";CONFIG_STATE=DATA_DIR/".wms-config.json";CONFIG=AdminConfigStore(CONFIG_STATE);WMS_ENV=os.environ.get("WMS_ENV","DEV").upper()
 class WMSRequestHandler(BaseHTTPRequestHandler):
- service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=True);debug_mode=False
+ service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=WMS_ENV!="PROD",seed_demo=WMS_ENV!="PROD");debug_mode=False
  def _token(self):
   cookie=SimpleCookie(self.headers.get("Cookie", ""));item=cookie.get("WMSSESSION");return item.value if item else None
  def _session(self):return AUTH.describe(self._token())

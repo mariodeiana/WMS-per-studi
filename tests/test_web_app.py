@@ -70,6 +70,10 @@ class WebAppTest(unittest.TestCase):
         self.login("anna.operatore")
         self.assertEqual(self.error("/api/manager/practices?actor=marta.manager"), 403)
 
+    def test_service_without_demo_seed_starts_empty(self):
+        service = PracticeService(seed_demo=False)
+        self.assertEqual(service._practices, {})
+
     def test_rich_demo_has_25_practices_and_multiple_workflow_states(self):
         service = PracticeService(rich_demo=True)
         rows = service.manager_practices("marta.manager")
