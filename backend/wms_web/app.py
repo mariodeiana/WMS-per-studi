@@ -11,7 +11,7 @@ from backend.wms_web.admin_config import AdminConfigStore
 from backend.wms_web.config_models import create_configured_practice
 from backend.wms_web.organization_service import OrganizationalPracticeService
 from backend.wms_web.service import DEMO_PRACTICE_ID
-ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DATA_DIR=Path(os.environ.get("WMS_DATA_DIR",ROOT));DATA_DIR.mkdir(parents=True,exist_ok=True);DEMO_STATE=DATA_DIR/".wms-demo-state.pkl";CONFIG_STATE=DATA_DIR/".wms-config.json";CONFIG=AdminConfigStore(CONFIG_STATE);WMS_ENV=os.environ.get("WMS_ENV","DEV").upper()
+ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DATA_DIR=Path(os.environ.get("WMS_DATA_DIR",ROOT));DATA_DIR.mkdir(parents=True,exist_ok=True);DEMO_STATE=DATA_DIR/".wms-demo-state.pkl";CONFIG_STATE=DATA_DIR/".wms-config.json";WMS_ENV=os.environ.get("WMS_ENV","DEV").upper();CONFIG=AdminConfigStore(CONFIG_STATE,seed_demo=WMS_ENV!="PROD")
 class WMSRequestHandler(BaseHTTPRequestHandler):
  service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=WMS_ENV!="PROD",seed_demo=WMS_ENV!="PROD");debug_mode=False
  def _token(self):

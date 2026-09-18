@@ -25,6 +25,14 @@ class ConfigurationTest(unittest.TestCase):
         self.config.save('practice_types', self.model)
         self.body={'client_id':'C-TEST','model_id':'TEST','period_start':'2026-09-01','period_end':'2026-09-30','due_date':'2026-10-16'}
 
+    def test_config_without_demo_seed_starts_empty(self):
+        path = Path(self.tmp.name) / "prod-config.json"
+        store = AdminConfigStore(path, seed_demo=False)
+        snapshot = store.snapshot()
+        for entity in ("users", "groups", "memberships", "assignment_policies", "practice_types", "clients"):
+            self.assertEqual(snapshot[entity], [])
+        self.assertEqual(snapshot["catalog_version"], 1)
+
     def test_migration_is_additive_and_idempotent(self):
         legacy=copy.deepcopy(DEFAULT_DATA)
         legacy['groups'].append({'id':'custom','name':'Custom','role':'OPERATORE'})

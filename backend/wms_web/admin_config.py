@@ -42,9 +42,10 @@ DEFAULT_DATA = {
 
 
 class AdminConfigStore:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, seed_demo: bool = True):
         self.path = path
         self._lock = RLock()
+        self._seed_demo = seed_demo
         self._data = self._load()
 
     def _load(self):
@@ -56,8 +57,13 @@ class AdminConfigStore:
                 return self._upgrade(raw)
             except (OSError, json.JSONDecodeError):
                 pass
-        data = json.loads(json.dumps(DEFAULT_DATA))
-        return self._upgrade(data)
+        if self._seed_demo:
+            data = json.loads(json.dumps(DEFAULT_DATA))
+            return self._upgrade(data)
+        data = {key: [] for key in ENTITIES}
+        data["catalog_version"] = 1
+        self._persist(data)
+        return data
 
     def _upgrade(self, data):
         if data.get("catalog_version", 0) < 1:
