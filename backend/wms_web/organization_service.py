@@ -101,12 +101,17 @@ class OrganizationalPracticeService(PracticeService):
                 results={r.id:r for r in practice.results}
                 for task in practice.tasks:
                     if task.assigned_group != group:continue
-                    # Un task preso in carico da un collega resta del gruppo ma non appare tra i propri task attivi.
-                    if task.claimed_by and task.claimed_by != actor and task.status.value != "COMPLETATO":continue
                     row={"practice_id":practice.id,"practice_type_code":practice.practice_type_code,"client_id":practice.client_id,"due_date":practice.due_date,**self._serialize_task(task)}
                     row["due_date"] = getattr(task, "due_date", None) or practice.due_date
                     row["urgency"], row["urgency_sort"] = deadline_urgency(row["due_date"])
-                    if task.status.value!="COMPLETATO":row["queue_section"]="ACTIVE";rows.append(row);continue
+                    if task.status.value!="COMPLETATO":
+                        row["locked_by_other"] = bool(task.claimed_by and task.claimed_by != actor)
+                        row["queue_section"] = "IN_USE" if row["locked_by_other"] else "ACTIVE"
+                        if row["locked_by_other"]:
+                            row.pop("work_note", None)
+                            row.pop("reopen_reason", None)
+                        rows.append(row)
+                        continue
                     result=results.get(task.result_id)
                     if result and result.actor==actor and result.timestamp>=cutoff:
                         row.update({"queue_section":"RECENT_COMPLETED","completed_at":_date(result.timestamp),"outcome":result.outcome,"result_note":result.note});rows.append(row)

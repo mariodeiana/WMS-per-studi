@@ -40,7 +40,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   if path=="/api/manager/practices":self._api(lambda:self._manager_practices());return
   if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue_for(self._principal()));return
   if path=="/api/validation-history":self._api(lambda:self.service.validation_history_for(self._principal()));return
-  if path=="/api/work-queue":self._api(lambda:self._with_client_names(self.service.work_queue_for(self._principal())));return
+  if path=="/api/work-queue":self._api(lambda:self._work_queue());return
   if path.startswith("/api/evidence/"):
    eid=unquote(path[len("/api/evidence/"):]);disp=query.get("disposition",["inline"])[0]
    try:
@@ -89,6 +89,13 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   with CONFIG._lock:
    if group_id not in {g["id"] for g in self._assignment_groups()}:raise ValueError("Selezionare un gruppo operatore attivo")
    return self.service.assign_group_for(pid,code,group_id,principal)
+ def _work_queue(self):
+  rows=self._with_client_names(self.service.work_queue_for(self._principal()))
+  names={u["username"]:u["display_name"] for u in CONFIG.list("users")}
+  for row in rows:
+   actor=row.get("claimed_by")
+   row["claimed_by_name"]=names.get(actor,actor) if actor else None
+  return rows
  def _manager_practices(self):
   return self._with_client_names(self.service.manager_practices_for(self._principal()))
  def _with_client_names(self,rows):

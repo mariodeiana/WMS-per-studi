@@ -23,6 +23,7 @@ export interface Task {
 }
 export interface QueueTask extends Task {
   practice_id: string; practice_type_code: string; client_id: string; client_name?: string; queue_section: string;
+  claimed_by_name?: string | null; locked_by_other?: boolean;
   urgency?: {level: string; label: string; detail: string}; urgency_sort?: number;
   completed_at?: string; outcome?: string; result_note?: string;
 }

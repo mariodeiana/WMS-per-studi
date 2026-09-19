@@ -171,6 +171,25 @@ class WebAppTest(unittest.TestCase):
         self.login("luca.operatore")
         self.assertEqual(self.error(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?operator=anna.operatore"), 403)
 
+    def test_claimed_tasks_show_owner_but_remain_locked_to_colleagues(self):
+        self.login("anna.operatore")
+        path=f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01"
+        self.request(path+"/progress", "POST", {"note":"Nota privata di lavoro"})
+        _, body, _ = self.request("/api/work-queue")
+        own=next(r for r in json.loads(body) if r["code"]=="LIPE-01")
+        self.assertEqual(own["queue_section"], "ACTIVE")
+        self.assertEqual(own["claimed_by_name"], "Mario Demo")
+        self.assertFalse(own["locked_by_other"])
+        self.login("luca.operatore")
+        _, body, _ = self.request("/api/work-queue")
+        row=next(r for r in json.loads(body) if r["code"]=="LIPE-01")
+        self.assertEqual(row["queue_section"], "IN_USE")
+        self.assertEqual(row["claimed_by_name"], "Mario Demo")
+        self.assertTrue(row["locked_by_other"])
+        self.assertNotIn("work_note",row)
+        self.assertEqual(self.error(path+"/progress", "POST", {"note":"Tentativo"}),403)
+        self.assertEqual(self.error(path+"/complete", "POST", {}),403)
+
     def test_tasks_complete_out_of_definition_order(self):
         plan = [("LIPE-07", "anna.operatore"), ("LIPE-02", "luca.operatore"), ("LIPE-05", "anna.operatore"), ("LIPE-04", "luca.operatore"), ("LIPE-01", "anna.operatore"), ("LIPE-06", "luca.operatore"), ("LIPE-03", "anna.operatore")]
         for code, actor in plan:
