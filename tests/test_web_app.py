@@ -57,6 +57,10 @@ class WebAppTest(unittest.TestCase):
         self.assertTrue(rows)
         for row in rows:
             self.assertEqual(row["client_name"], names[row["client_id"]])
+            from backend.wms_web.service import deadline_urgency
+            urgency, order = deadline_urgency(row["due_date"])
+            self.assertEqual(row["urgency"], urgency)
+            self.assertEqual(row["urgency_sort"], order)
 
     def test_serves_manager_queue_task_and_validation_views(self):
         for path, marker in [

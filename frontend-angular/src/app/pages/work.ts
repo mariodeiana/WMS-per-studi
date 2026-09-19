@@ -11,6 +11,7 @@ export class Work implements OnInit {
   sections = [{code:'ACTIVE', title:'Da lavorare'}, {code:'RECENT_COMPLETED', title:'Completate · ultime 8 ore'}];
   count(section: string) { return this.tasks().filter(t => t.queue_section === section).length; }
   days(t: QueueTask) {
+    if (t.urgency_sort !== undefined) return t.urgency_sort;
     const now = new Date(); const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
     return Math.round((Date.parse(t.due_date.slice(0,10)+'T00:00:00Z')-today)/86400000);
   }

@@ -284,6 +284,20 @@ def serialize_practice(practice):
     }
 
 
+def deadline_urgency(due_date):
+    due = date.fromisoformat(due_date)
+    days = (due - date.today()).days
+    if days < 0:
+        urgency = {"level": "OVERDUE", "label": "In ritardo", "detail": f"{abs(days)} gg"}
+    elif days <= 7:
+        urgency = {"level": "HIGH", "label": "Alta", "detail": f"{days} gg"}
+    elif days <= 30:
+        urgency = {"level": "MEDIUM", "label": "Media", "detail": f"{days} gg"}
+    else:
+        urgency = {"level": "LOW", "label": "Bassa", "detail": f"{days} gg"}
+    return urgency, days
+
+
 def _summary(practice):
     total = len(practice.tasks)
     completed = sum(task.status.value == "COMPLETATO" for task in practice.tasks)
@@ -301,16 +315,7 @@ def _summary(practice):
         situation = {"code": "IN_PROGRESS", "label": f"{in_progress} task in corso"}
     else:
         situation = {"code": "REGULAR", "label": "Regolare"}
-    due = date.fromisoformat(practice.due_date)
-    days = (due - date.today()).days
-    if days < 0:
-        urgency = {"level": "OVERDUE", "label": "In ritardo", "detail": f"{abs(days)} gg"}
-    elif days <= 7:
-        urgency = {"level": "HIGH", "label": "Alta", "detail": f"{days} gg"}
-    elif days <= 30:
-        urgency = {"level": "MEDIUM", "label": "Media", "detail": f"{days} gg"}
-    else:
-        urgency = {"level": "LOW", "label": "Bassa", "detail": f"{days} gg"}
+    urgency, days = deadline_urgency(practice.due_date)
     return {
         "id": practice.id,
         "practice_type_code": practice.practice_type_code,

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from backend.wms_core.models import UserRole
 from backend.wms_core.workflow import close_practice, complete_task, reopen_task, save_task_progress, validate_practice
-from backend.wms_web.service import RECENT_COMPLETED_HOURS, PracticeService, _date, _evidence, _result, _summary, _task, serialize_practice
+from backend.wms_web.service import RECENT_COMPLETED_HOURS, PracticeService, _date, _evidence, _result, _summary, _task, serialize_practice, deadline_urgency
 
 
 class OrganizationalPracticeService(PracticeService):
@@ -105,6 +105,7 @@ class OrganizationalPracticeService(PracticeService):
                     if task.claimed_by and task.claimed_by != actor and task.status.value != "COMPLETATO":continue
                     row={"practice_id":practice.id,"practice_type_code":practice.practice_type_code,"client_id":practice.client_id,"due_date":practice.due_date,**self._serialize_task(task)}
                     row["due_date"] = getattr(task, "due_date", None) or practice.due_date
+                    row["urgency"], row["urgency_sort"] = deadline_urgency(row["due_date"])
                     if task.status.value!="COMPLETATO":row["queue_section"]="ACTIVE";rows.append(row);continue
                     result=results.get(task.result_id)
                     if result and result.actor==actor and result.timestamp>=cutoff:
