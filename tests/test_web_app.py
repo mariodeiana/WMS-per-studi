@@ -70,6 +70,38 @@ class WebAppTest(unittest.TestCase):
         self.login("anna.operatore")
         self.assertEqual(self.error("/api/manager/practices?actor=marta.manager"), 403)
 
+    def test_manager_assignment_catalog_and_invalid_group(self):
+        _, body, _ = self.request("/api/manager/assignment-groups")
+        groups = json.loads(body)
+        self.assertIn({"id": "contabili", "name": "Contabili"}, groups)
+        self.assertNotIn("manager", [g["id"] for g in groups])
+        before = WMSRequestHandler.service.get_for(DEMO_PRACTICE_ID, AUTH.principal(self.token))
+        self.assertEqual(self.error(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/LIPE-01/assign", "POST", {"group_id": "missing"}), 409)
+        after = WMSRequestHandler.service.get_for(DEMO_PRACTICE_ID, AUTH.principal(self.token))
+        self.assertEqual(before, after)
+        self.login("anna.operatore")
+        self.assertEqual(self.error("/api/manager/assignment-groups"), 403)
+
+    def test_nonconformity_payload_tracks_corrective_cycle(self):
+        for i in range(1, 8):
+            self.complete(f"LIPE-{i:02}", "anna.operatore")
+        self.login("valeria.validatore")
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/validate", "POST", {"outcome": "NON_VALIDATA", "note": "Correggere importi"})
+        nc = json.loads(body)["nonconformities"][0]
+        self.assertEqual(nc["status"], "APERTA")
+        self.assertEqual(nc["reason"], "Correggere importi")
+        self.login("marta.manager")
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/corrective-action", "POST", {"task_codes": ["LIPE-01"], "instruction": "Controllare importi"})
+        nc = json.loads(body)["nonconformities"][0]
+        self.assertEqual(nc["status"], "IN_SANATORIA")
+        self.assertEqual(nc["corrective_actions"][0]["task_codes"], ["LIPE-01"])
+        self.complete("LIPE-01", "anna.operatore")
+        self.login("valeria.validatore")
+        _, body, _ = self.request(f"/api/practices/{DEMO_PRACTICE_ID}/validate", "POST", {"outcome": "VALIDATA"})
+        nc = json.loads(body)["nonconformities"][0]
+        self.assertEqual(nc["status"], "CHIUSA")
+        self.assertTrue(nc["closed_at"])
+
     def test_service_without_demo_seed_starts_empty(self):
         service = PracticeService(seed_demo=False)
         self.assertEqual(service._practices, {})

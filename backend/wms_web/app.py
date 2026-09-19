@@ -36,6 +36,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   if path.startswith("/api/") and not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
   if path=="/api/admin/practices":self._api(lambda:(self._require_admin(),self._configured_practices())[1]);return
   if path=="/api/admin/config":self._api(lambda:(self._require_admin(),CONFIG.snapshot())[1]);return
+  if path=="/api/manager/assignment-groups":self._api(self._assignment_groups);return
   if path=="/api/manager/practices":self._api(lambda:self._manager_practices());return
   if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue_for(self._principal()));return
   if path=="/api/validation-history":self._api(lambda:self.service.validation_history_for(self._principal()));return
@@ -75,12 +76,19 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   pid,action=parts[2],parts[3];principal=self._principal();outcome=str(body.get("outcome") or "");note=str(body.get("note") or "");attachments=body.get("attachments") if isinstance(body.get("attachments"),list) else []
   if action=="tasks" and len(parts)==6 and parts[5]=="progress":self._api(lambda:self.service.save_task_progress_for(pid,parts[4],principal,note,attachments))
   elif action=="tasks" and len(parts)==6 and parts[5]=="complete":self._api(lambda:self.service.complete_task_for(pid,parts[4],principal,outcome or "COMPLETATO",note,attachments))
-  elif action=="tasks" and len(parts)==6 and parts[5]=="assign":self._api(lambda:self.service.assign_group_for(pid,parts[4],str(body.get("group_id") or body.get("assignee") or ""),principal))
+  elif action=="tasks" and len(parts)==6 and parts[5]=="assign":self._api(lambda:self._assign_group(pid,parts[4],str(body.get("group_id") or body.get("assignee") or ""),principal))
   elif action=="tasks" and len(parts)==6 and parts[5]=="reopen":self._api(lambda:self.service.reopen_task_for(pid,parts[4],principal,str(body.get("reason") or "")))
   elif action=="corrective-action" and len(parts)==4:self._api(lambda:self._corrective_action(pid,principal,body))
   elif action=="validate" and len(parts)==4:self._api(lambda:self.service.validate_for(pid,principal,outcome or "VALIDATA",note,attachments))
   elif action=="close" and len(parts)==4:self._api(lambda:self.service.close_for(pid,principal,outcome or "CHIUSA",note,attachments))
   else:self._json({"error":"Endpoint inesistente"},404)
+ def _assignment_groups(self):
+  if self._principal()["role"]!="MANAGER":raise PermissionError("Gruppi assegnatari riservati al manager")
+  return [{"id":g["id"],"name":g["name"]} for g in CONFIG.list("groups") if g["role"]=="OPERATORE" and g.get("active",True)]
+ def _assign_group(self,pid,code,group_id,principal):
+  with CONFIG._lock:
+   if group_id not in {g["id"] for g in self._assignment_groups()}:raise ValueError("Selezionare un gruppo operatore attivo")
+   return self.service.assign_group_for(pid,code,group_id,principal)
  def _manager_practices(self):
   rows=self.service.manager_practices_for(self._principal())
   clients={c["id"]:c["name"] for c in CONFIG.list("clients")}

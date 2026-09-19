@@ -1,0 +1,149 @@
+  <section class="page-heading">
+    <div>
+      <p class="eyebrow">Scrivania Manager</p>
+      <h1>Pratiche in esecuzione</h1>
+      <p class="subtitle">
+        Controllo operativo delle pratiche attive, ordinate per urgenza.
+      </p>
+    </div>
+
+    @if (!loading() && !error()) {
+      <div class="kpi-panel">
+
+        <div class="kpi">
+          <div class="gauge" [style.--value]="gaugeStyle(overallProgress())">
+            <div class="gauge-inner">
+              <strong>{{ overallProgress() }}%</strong>
+            </div>
+          </div>
+          <span>Avanzamento</span>
+          <small>attività complessive</small>
+        </div>
+
+        <div class="kpi">
+          <div class="gauge" [style.--value]="gaugeStyle(criticalCount(), practices().length)">
+            <div class="gauge-inner">
+              <strong>{{ criticalCount() }}</strong>
+            </div>
+          </div>
+          <span>Critiche</span>
+          <small>scadute / non validate</small>
+        </div>
+
+        <div class="kpi">
+          <div class="gauge" [style.--value]="gaugeStyle(warningsCount(), practices().length)">
+            <div class="gauge-inner">
+              <strong>{{ warningsCount() }}</strong>
+            </div>
+          </div>
+          <span>Con rilievi</span>
+          <small>da verificare</small>
+        </div>
+
+        <div class="kpi">
+          <div class="gauge" [style.--value]="gaugeStyle(dueSoonCount(), practices().length)">
+            <div class="gauge-inner">
+              <strong>{{ dueSoonCount() }}</strong>
+            </div>
+          </div>
+          <span>In scadenza</span>
+          <small>entro 7 giorni</small>
+        </div>
+
+      </div>
+    }
+  </section>
+
+  @if (loading()) {
+    <section class="message">
+      Caricamento pratiche…
+    </section>
+  }
+
+  @if (error()) {
+    <section class="message error">
+      {{ error() }}
+    </section>
+  }
+
+  @if (!loading() && !error()) {
+    <section class="practice-card">
+      <div class="table-head">
+        <span>Cliente</span>
+        <span>Pratica</span>
+        <span>Periodo</span>
+        <span>Scadenza</span>
+        <span>Stato</span>
+        <span>Avanzamento</span>
+        <span>Situazione</span>
+        <span>Urgenza</span>
+      </div>
+
+      @for (p of practices(); track p.id) {
+        <div
+          class="practice-row"
+          [class.overdue]="p.urgency.level === 'OVERDUE'"
+          [class.problem]="p.status === 'NON_VALIDATA'"
+          [class.warning]="p.situation.code === 'WARNINGS'"
+        >
+          <div class="client">
+            <small>{{ p.client_id }}</small>
+            <strong>{{ p.client_name }}</strong>
+          </div>
+
+          <div class="practice">
+            <a [routerLink]="['/practices', p.id]"><strong>{{ p.practice_type_code }}</strong></a>
+            <small>{{ p.id }}</small>
+          </div>
+
+          <div class="period">
+            {{ p.period_start | date:'dd MMM yyyy' }}
+            <small>→ {{ p.period_end | date:'dd MMM yyyy' }}</small>
+          </div>
+
+          <div class="due">
+            <strong>{{ p.due_date | date:'dd MMM yyyy' }}</strong>
+          </div>
+
+          <div>
+            <span class="status" [attr.data-status]="p.status">
+              {{ statusLabel(p.status) }}
+            </span>
+          </div>
+
+          <div class="row-progress">
+            <div
+              class="mini-gauge"
+              [style.--value]="gaugeStyle(p.progress.percent)"
+            >
+              <div class="mini-gauge-inner">
+                <strong>{{ p.progress.completed }}/{{ p.progress.total }}</strong>
+              </div>
+            </div>
+            <small>{{ p.progress.percent }}%</small>
+          </div>
+
+          <div>
+            @if (p.status === 'NON_VALIDATA') {
+              <span class="situation situation-problem">Non validata</span>
+            } @else if (p.situation.code === 'WARNINGS') {
+              <span class="situation situation-warning">
+                {{ p.situation.label }}
+              </span>
+            } @else {
+              <span class="situation situation-ok">Regolare</span>
+            }
+          </div>
+
+          <div class="urgency">
+            <strong>{{ p.urgency.label }}</strong>
+            <small>{{ p.urgency.detail }}</small>
+          </div>
+        </div>
+      } @empty {
+        <div class="empty">
+          Nessuna pratica attiva.
+        </div>
+      }
+    </section>
+  }

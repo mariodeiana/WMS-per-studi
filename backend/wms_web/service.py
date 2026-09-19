@@ -260,6 +260,16 @@ def serialize_practice(practice):
         "period_end": practice.period_end,
         "due_date": practice.due_date,
         "requires_validation": practice.requires_validation,
+        "nonconformities": [{
+            "id": nc.id, "reason": nc.reason, "status": nc.status.value,
+            "opened_by": nc.opened_by, "opened_at": _date(nc.opened_at),
+            "closed_by": nc.closed_by, "closed_at": _date(nc.closed_at),
+            "corrective_actions": [{
+                "id": action.id, "actor": action.actor, "instruction": action.instruction,
+                "task_codes": list(action.task_codes), "created_at": _date(action.created_at),
+                "completed_at": _date(action.completed_at),
+            } for action in nc.corrective_actions],
+        } for nc in getattr(practice, "nonconformities", [])],
         "status": practice.status.value,
         "tasks": [_task(task) for task in practice.tasks],
         "progress": {"completed": completed, "total": len(practice.tasks)},

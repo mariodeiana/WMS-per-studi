@@ -1,0 +1,65 @@
+@if (loading()) { <p role="status">Caricamento pratica…</p> }
+@if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+@if (data(); as p) {
+  <div class="page-heading"><div><p class="eyebrow">{{ validator() ? 'Validazione pratica' : 'Scheda pratica' }} · {{ p.id }}</p>
+    <h1>{{ p.practice_type_code }} · {{ p.client_id }}</h1>
+    <p>{{ p.period_start | date:'dd/MM/yyyy' }} – {{ p.period_end | date:'dd/MM/yyyy' }} · Scadenza {{ p.due_date | date:'dd/MM/yyyy' }}</p>
+  </div><span class="status" [attr.data-status]="p.status">{{ p.status }}</span></div>
+  @if (taskCode) { <a [routerLink]="['/practices', p.id]">← Tutta la pratica</a> }
+  @for (nc of p.nonconformities; track nc.id) {
+    <section class="panel notice"><h2>{{ nc.id }} · Non conformità · {{ nc.status }}</h2><p class="preline">{{ nc.reason }}</p>
+      <small>{{ nc.opened_by }} · {{ nc.opened_at | date:'dd/MM/yyyy HH:mm' }}</small>
+      @for (ac of nc.corrective_actions; track ac.id) {
+        <div class="panel"><h3>{{ ac.id }} · Azione correttiva</h3><p class="preline">{{ ac.instruction }}</p><p>Attività: {{ ac.task_codes.join(', ') }}</p>
+          <small>{{ ac.actor }} · {{ ac.created_at | date:'dd/MM/yyyy HH:mm' }} @if (ac.completed_at) { · Completata {{ ac.completed_at | date:'dd/MM/yyyy HH:mm' }} }</small></div>
+      }
+      @if (nc.closed_at) { <p>Chiusa da {{ nc.closed_by }} · {{ nc.closed_at | date:'dd/MM/yyyy HH:mm' }}</p> }
+      @if (manager() && nc.status === 'APERTA' && p.status === 'NON_VALIDATA') {
+        <fieldset [disabled]="busy()"><legend>Definizione azione correttiva</legend>
+          @for (t of p.tasks; track t.code) { @if (t.status === 'COMPLETATO') { <label class="check"><input type="checkbox" [(ngModel)]="selection[t.code]">{{ t.code }} · {{ t.title }}</label> } }
+          <label>Istruzioni per la correzione<textarea [(ngModel)]="instruction"></textarea></label>
+          <button type="button" (click)="correct()" [disabled]="!instruction.trim() || !selected().length">Avvia sanatoria</button>
+        </fieldset>
+      }
+    </section>
+  }
+  <section class="panel"><h2>Attività · {{ p.progress.completed }}/{{ p.progress.total }}</h2>
+    @for (t of visibleTasks(); track t.code) {
+      <article class="panel"><h3><a [routerLink]="['/practices', p.id, 'tasks', t.code]">{{ t.code }} · {{ t.title }}</a></h3>
+        <p><span class="status">{{ t.status }}</span> @if (!t.active) { <span class="status">Percorso non attivo</span> } · {{ t.required ? 'Obbligatoria' : 'Facoltativa' }}</p>
+        <p class="preline">{{ t.instructions }}</p><p>Gruppo: {{ t.assigned_group }} · Scadenza: {{ (t.due_date || p.due_date) | date:'dd/MM/yyyy' }}</p>
+        @if (t.claimed_by) { <p>In carico a {{ t.claimed_by }}</p> } @if (t.completed_by) { <p>Completata da {{ t.completed_by }}</p> }
+        <p>Dipendenze: {{ t.depends_on.join(', ') || 'Nessuna' }}</p>
+        @for (transition of t.transitions | keyvalue; track transition.key) { <p>{{ transition.key }} → {{ transition.value.join(', ') || 'Fine' }}</p> }
+        @if (t.work_note) { <p class="preline">Nota di lavoro: {{ t.work_note }}</p> } @if (t.reopen_reason) { <p class="notice preline">Riapertura: {{ t.reopen_reason }}</p> }
+        @if (manager()) {
+          @if (t.status !== 'COMPLETATO' && p.status !== 'CHIUSA' && p.status !== 'VALIDATA') {
+            <div class="actions"><label>Gruppo assegnatario<select [(ngModel)]="group[t.code]" [disabled]="busy()">
+              <option value="">Seleziona gruppo</option>@for (g of groups(); track g.id) { <option [value]="g.id">{{ g.name }}</option> }
+            </select></label><button type="button" (click)="assign(t)" [disabled]="busy() || !group[t.code] || group[t.code] === t.assigned_group">Assegna</button></div>
+          }
+          @if (canReopen(t)) { <div class="stack"><label>Motivo della riapertura<textarea [(ngModel)]="reason[t.code]" [disabled]="busy()"></textarea></label><button (click)="reopen(t)" [disabled]="busy() || !reason[t.code]?.trim()">Riapri task</button></div> }
+        }
+      </article>
+    }
+  </section>
+  @if ((manager() && canClose()) || (validator() && p.status === 'DA_VALIDARE')) {
+    <section class="panel"><h2>{{ validator() ? 'Registra validazione' : 'Chiusura pratica' }}</h2>
+      <form (ngSubmit)="submitResult()"><fieldset class="stack" [disabled]="busy()"><legend>Risultato</legend>
+        <label>Esito<select name="outcome" [(ngModel)]="outcome" required><option value="">Seleziona esito</option>
+          @if (validator()) { <option value="VALIDATA">Validata</option><option value="VALIDATA_CON_RILIEVI">Validata con rilievi</option><option value="NON_VALIDATA">Non validata</option> }
+          @else { <option value="CHIUSA">Chiusa</option><option value="CHIUSA_CON_RILIEVI">Chiusa con rilievi</option> }
+        </select></label><label>Nota<textarea name="note" [(ngModel)]="note"></textarea></label>
+        <wms-attachments [disabled]="busy()" />
+        <button [disabled]="!canSubmit()">{{ validator() ? 'Registra validazione' : 'Registra risultato e chiudi' }}</button>
+      </fieldset></form>
+    </section>
+  }
+  <section class="panel"><h2>Risultati ed evidenze</h2><wms-results [items]="visibleResults()" [evidence]="p.evidence" [tasks]="p.tasks" /></section>
+  <details class="panel"><summary>Fascicolo documenti completo</summary><wms-evidence [items]="p.evidence" /></details>
+  <details class="panel"><summary>Audit log · {{ p.audit.length }} eventi</summary>
+    @for (event of p.audit; track $index) { <article class="panel"><strong>{{ event.event_type }}</strong><p>{{ event.actor }} · {{ event.at | date:'dd/MM/yyyy HH:mm' }}</p>
+      @for (detail of event.details | keyvalue; track detail.key) { <p><small>{{ detail.key }}: {{ detail.value | json }}</small></p> }
+    </article> }
+  </details>
+}
