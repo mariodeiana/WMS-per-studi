@@ -1,6 +1,7 @@
 """Local Angular acceptance preview with disposable data; never uses WMS environments."""
 import argparse
 import os
+import mimetypes
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
@@ -23,6 +24,18 @@ def main():
             raise SystemExit('Eseguire prima npm run build in frontend-angular')
 
         class PreviewHandler(app.WMSRequestHandler):
+            def _static(self, path):
+                target = (app.FRONTEND / path.lstrip('/')).resolve()
+                if app.FRONTEND not in target.parents or not target.is_file():
+                    self._json({"error": "Risorsa inesistente"}, 404)
+                    return
+                data = target.read_bytes()
+                self.send_response(200)
+                self.send_header('Content-Type', mimetypes.guess_type(target.name)[0] or 'application/octet-stream')
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
             def do_GET(self):
                 path = urlparse(self.path).path
                 if path.startswith('/api/'):
