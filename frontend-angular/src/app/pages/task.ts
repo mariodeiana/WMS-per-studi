@@ -8,37 +8,18 @@ import { TaskDetail } from '../core/models';
 import { Attachments } from '../shared/attachments';
 import { EvidenceList } from '../shared/evidence';
 import { Results } from '../shared/results';
-@Component({ selector: 'wms-task', imports: [DatePipe, FormsModule, RouterLink, Attachments, EvidenceList, Results], template: `
-  <a routerLink="/work">← I miei compiti</a>
-  @if (loading()) { <p role="status">Caricamento attività…</p> }
-  @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
-  @if (data(); as d) {
-    <section class="panel"><p class="eyebrow">{{ d.practice.type }} · {{ d.practice.id }} · {{ d.task.code }}</p><h1>{{ d.task.title }}</h1>
-      <p>Cliente {{ d.practice.client_id }} · {{ d.practice.period_start | date:'dd/MM/yyyy' }} – {{ d.practice.period_end | date:'dd/MM/yyyy' }}</p>
-      <p>Scadenza {{ (d.task.due_date || d.practice.due_date) | date:'dd/MM/yyyy' }} · {{ d.task.status }}</p>
-      <p>Dipendenze: {{ d.task.depends_on.join(', ') || 'Nessuna' }}</p>
-      @if (d.task.reopen_reason) { <p class="notice preline">Riaperta dal Manager: {{ d.task.reopen_reason }}</p> }
-      <h2>Istruzioni operative</h2><p class="preline">{{ d.task.instructions || 'Nessuna istruzione definita.' }}</p>
-    </section>
-    <section class="panel"><h2>Diario del task</h2>
-      @for (entry of d.task_journal; track $index) { <article class="panel"><small>{{ entry.actor }} · {{ entry.at | date:'dd/MM/yyyy HH:mm' }} · {{ entry.type }}</small><p class="preline">{{ entry.note }}</p><wms-evidence [items]="entry.evidence" /></article> } @empty { <p>Nessuna annotazione.</p> }
-      <wms-evidence [items]="d.task_progress_evidence" />
-    </section>
-    <section class="panel"><h2>Risultati del task</h2><wms-results [items]="d.task_results || []" [evidence]="d.evidence || []" [tasks]="[d.task]" /></section>
-    <section class="panel"><h2>Materiale e risultati precedenti</h2><wms-results [items]="d.previous_results || []" [evidence]="d.evidence || []" /></section>
-    @if (d.task.status !== 'COMPLETATO' && d.task.active) {
-      <section class="panel"><h2>Lavorazione</h2><fieldset class="stack" [disabled]="busy()">
-        <label>Esito<select [(ngModel)]="outcome"><option value="">Seleziona esito</option>@for (o of outcomes(); track o) { <option [value]="o">{{ o }}</option> }</select></label>
-        <label>Nota<textarea [(ngModel)]="note"></textarea></label><wms-attachments [disabled]="busy()" />
-        <div class="actions"><button type="button" class="secondary" (click)="save(false)">Salva e torna ai compiti</button><button type="button" (click)="save(true)" [disabled]="!outcome">Registra risultato e completa</button></div>
-      </fieldset></section>
-    } @else { <p class="notice">{{ d.task.status === 'COMPLETATO' ? 'Attività completata.' : 'Attività in attesa dell’attivazione del percorso.' }}</p> }
-  }
-` })
+@Component({ selector: 'wms-task', imports: [DatePipe, FormsModule, RouterLink, Attachments, EvidenceList, Results], templateUrl: './task.html' })
 export class TaskPage implements OnInit {
   private api = inject(Api); private route = inject(ActivatedRoute); private router = inject(Router); private destroy = inject(DestroyRef);
   data = signal<TaskDetail | null>(null); loading = signal(true); busy = signal(false); error = signal(''); outcome = ''; note = ''; private version = 0;
   attachments = viewChild(Attachments);
+  tab = 'results';
+  tabs = [{id:'results',label:'Risultati attività'},{id:'journal',label:'Diario'},{id:'previous',label:'Attività precedenti'},{id:'documents',label:'Documenti'}];
+  statusLabel() { const t=this.data()?.task; return t?.status==='COMPLETATO' ? 'Completata' : !t?.active ? 'In attesa' : t?.status==='IN_LAVORAZIONE' ? 'In corso' : 'Da fare'; }
+  documents() { const d=this.data(); return (d?.evidence || []).filter(e=>e.related_task_code===d?.task.code); }
+  tabCount(id: string) { const d=this.data(); return id==='results' ? d?.task_results?.length || 0 : id==='journal' ? d?.task_journal.length || 0 : id==='previous' ? d?.previous_results?.length || 0 : this.documents().length; }
+  tabKey(event: KeyboardEvent) { let i=this.tabs.findIndex(t=>t.id===this.tab); if(event.key==='ArrowRight') i=(i+1)%4; else if(event.key==='ArrowLeft') i=(i+3)%4; else if(event.key==='Home') i=0; else if(event.key==='End') i=3; else return; event.preventDefault(); this.tab=this.tabs[i].id; (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[i]?.focus(); }
+
   ngOnInit() { this.route.paramMap.pipe(takeUntilDestroyed(this.destroy)).subscribe(params => { void this.load(params.get('id') || '', params.get('code') || ''); }); }
   outcomes() { const configured = this.data()?.task.outcomes; return configured?.length ? configured : ['POSITIVO', 'CON_RILIEVI']; }
   async load(id: string, code: string) {

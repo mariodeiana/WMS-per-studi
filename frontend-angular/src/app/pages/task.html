@@ -1,0 +1,25 @@
+<nav class="workspace-crumb" aria-label="Percorso"><a routerLink="/work">← I miei compiti</a>@if(data(); as d) { <span>/</span><span>{{ d.practice.id }}</span><span>/</span><strong>{{ d.task.code }}</strong> }</nav>
+@if (loading()) { <p role="status">Caricamento attività…</p> }
+@if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+@if (data(); as d) {
+  <div class="operator-detail">
+    <section class="workspace-card operator-detail-header"><div class="operator-detail-title"><div><p class="eyebrow">{{ d.practice.type }} · {{ d.task.code }}</p><h1>{{ d.task.title }}</h1></div><span class="status" [attr.data-status]="d.task.status === 'COMPLETATO' ? 'COMPLETATA' : d.task.status">{{ statusLabel() }}</span></div>
+      <div class="operator-detail-facts"><div><small>Cliente</small><strong>{{ d.practice.client_id }}</strong></div><div><small>Periodo</small><strong>{{ d.practice.period_start | date:'dd/MM/yyyy' }} – {{ d.practice.period_end | date:'dd/MM/yyyy' }}</strong></div><div><small>Scadenza attività</small><strong>{{ (d.task.due_date || d.practice.due_date) | date:'dd MMM yyyy' }}</strong></div><div><small>Dipendenze</small><strong>{{ d.task.depends_on.join(', ') || 'Nessuna' }}</strong></div></div>
+      @if(d.task.reopen_reason) { <p class="notice preline"><strong>Riaperta dal Manager:</strong> {{ d.task.reopen_reason }}</p> }
+      <div class="operator-instructions"><strong>Istruzioni operative</strong><p class="preline">{{ d.task.instructions || 'Nessuna istruzione definita.' }}</p></div>
+    </section>
+    <div class="operator-detail-grid" [class.read-only]="d.task.status === 'COMPLETATO' || !d.task.active">
+      @if(d.task.status !== 'COMPLETATO' && d.task.active) {
+        <section class="workspace-card operator-editor"><div class="section-heading"><h2>Lavorazione</h2><small>{{ d.task.claimed_by ? '🔒 ' + d.task.claimed_by : 'Disponibile per la presa in carico' }}</small></div><fieldset class="editor-fields stack" [disabled]="busy()"><label>Nota di lavoro<textarea [(ngModel)]="note" placeholder="Annota il lavoro svolto o il risultato…"></textarea></label><wms-attachments [disabled]="busy()"/><label>Esito<select [(ngModel)]="outcome"><option value="">Seleziona per completare</option>@for(o of outcomes(); track o) { <option [value]="o">{{ o.replaceAll('_',' ') }}</option> }</select></label><div class="operator-editor-actions"><button type="button" class="secondary" (click)="save(false)">Salva e torna ai compiti</button><button type="button" (click)="save(true)" [disabled]="!outcome">Registra risultato e completa</button></div></fieldset></section>
+      }
+      <section class="workspace-card operator-dossier"><div class="workspace-tabs" role="tablist" aria-label="Fascicolo attività">@for(item of tabs; track item.id) { <button type="button" role="tab" [id]="'task-tab-'+item.id" [attr.aria-controls]="'task-panel-'+item.id" [attr.aria-selected]="tab===item.id" [tabIndex]="tab===item.id ? 0 : -1" (click)="tab=item.id" (keydown)="tabKey($event)">{{ item.label }} <span class="count-badge">{{ tabCount(item.id) }}</span></button> }</div>
+        <div class="operator-dossier-content">
+          <section id="task-panel-results" role="tabpanel" aria-labelledby="task-tab-results" [hidden]="tab!=='results'"><wms-results [items]="d.task_results || []" [evidence]="d.evidence || []" [tasks]="[d.task]" /></section>
+          <section id="task-panel-journal" role="tabpanel" aria-labelledby="task-tab-journal" [hidden]="tab!=='journal'">@for(entry of d.task_journal; track $index) { <article class="operator-journal-entry"><small>{{ entry.actor }} · {{ entry.at | date:'dd/MM/yyyy HH:mm' }} · {{ entry.type === 'REOPENED' ? 'Riapertura' : 'Nota di lavoro' }}</small><p class="preline">{{ entry.note }}</p>@if(entry.evidence.length) { <wms-evidence [items]="entry.evidence"/> }</article> } @empty { <p class="muted">Nessuna annotazione.</p> }@if(d.task_progress_evidence.length) { <details class="operator-progress-documents"><summary>Documenti di lavorazione · {{ d.task_progress_evidence.length }}</summary><wms-evidence [items]="d.task_progress_evidence"/></details> }</section>
+          <section id="task-panel-previous" role="tabpanel" aria-labelledby="task-tab-previous" [hidden]="tab!=='previous'"><wms-results [items]="d.previous_results || []" [evidence]="d.evidence || []"/></section>
+          <section id="task-panel-documents" role="tabpanel" aria-labelledby="task-tab-documents" [hidden]="tab!=='documents'"><wms-evidence [items]="documents()"/></section>
+        </div>
+      </section>
+    </div>
+  </div>
+}
