@@ -11,6 +11,6 @@
 </header>
 <main>
   @if (auth.session(); as s) { <nav aria-label="Navigazione principale"><a [routerLink]="home(s.active.role)">Scrivania · {{ s.active.group }}</a></nav> }
-  @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+  @if (error()) { <p class="message error" role="alert">{{ error() }} <button type="button" class="secondary" (click)="reload()">Ricarica pagina</button></p> }
   @if (busy()) { <p role="status">Aggiornamento sessione…</p> } @else { <router-outlet /> }
 </main>

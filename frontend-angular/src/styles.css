@@ -113,7 +113,7 @@ h1 {
 }
 
 .practice-card {
-  overflow: hidden;
+  overflow-x: auto;
   background: white;
   border: 1px solid #dfe3e8;
   border-radius: 10px;

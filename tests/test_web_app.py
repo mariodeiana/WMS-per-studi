@@ -102,6 +102,14 @@ class WebAppTest(unittest.TestCase):
         self.assertEqual(nc["status"], "CHIUSA")
         self.assertTrue(nc["closed_at"])
 
+    def test_operator_context_includes_own_result_history(self):
+        self.complete("LIPE-01", "anna.operatore")
+        _, body, _ = self.request(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?context=1")
+        data = json.loads(body)
+        self.assertEqual(len(data["task_results"]), 1)
+        self.assertEqual(data["task_results"][0]["id"], data["task"]["result_id"])
+        self.assertNotIn("LIPE-01", [r["related_task_code"] for r in data["previous_results"]])
+
     def test_service_without_demo_seed_starts_empty(self):
         service = PracticeService(seed_demo=False)
         self.assertEqual(service._practices, {})

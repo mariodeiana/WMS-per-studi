@@ -24,6 +24,7 @@ import { Results } from '../shared/results';
       @for (entry of d.task_journal; track $index) { <article class="panel"><small>{{ entry.actor }} · {{ entry.at | date:'dd/MM/yyyy HH:mm' }} · {{ entry.type }}</small><p class="preline">{{ entry.note }}</p><wms-evidence [items]="entry.evidence" /></article> } @empty { <p>Nessuna annotazione.</p> }
       <wms-evidence [items]="d.task_progress_evidence" />
     </section>
+    <section class="panel"><h2>Risultati del task</h2><wms-results [items]="d.task_results || []" [evidence]="d.evidence || []" [tasks]="[d.task]" /></section>
     <section class="panel"><h2>Materiale e risultati precedenti</h2><wms-results [items]="d.previous_results || []" [evidence]="d.evidence || []" /></section>
     @if (d.task.status !== 'COMPLETATO' && d.task.active) {
       <section class="panel"><h2>Lavorazione</h2><fieldset class="stack" [disabled]="busy()">

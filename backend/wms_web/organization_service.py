@@ -131,6 +131,7 @@ class OrganizationalPracticeService(PracticeService):
                     if result.related_task_code==task.code:continue
                     row=_result(result);row["related_task_title"]=titles.get(result.related_task_code or "");row["evidence"]=[evidences[e] for e in result.evidence_ids if e in evidences];previous.append(row)
                 detail["previous_results"]=previous;detail["evidence"]=[_evidence(i) for i in practice.evidence]
+                detail["task_results"]=[_result(r) for r in reversed(practice.results) if r.related_task_code==task.code]
             return detail
 
     def _claim(self, task, principal, practice):

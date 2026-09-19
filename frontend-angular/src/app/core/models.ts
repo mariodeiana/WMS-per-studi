@@ -33,7 +33,7 @@ export interface Practice {
 }
 export interface TaskDetail {
   practice: { id: string; type: string; client_id: string; period_start: string; period_end: string; due_date: string };
-  task: Task; previous_results?: Result[]; evidence?: Evidence[]; task_progress_evidence: Evidence[];
+  task: Task; task_results?: Result[]; previous_results?: Result[]; evidence?: Evidence[]; task_progress_evidence: Evidence[];
   task_journal: { type: string; actor: string; at: string; note: string; evidence: Evidence[] }[];
 }
 export interface Attachment { filename: string; content_type: string; description: string; document_type: string; content_base64: string; }

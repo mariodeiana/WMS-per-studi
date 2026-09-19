@@ -1,0 +1,70 @@
+<p class="eyebrow">Amministrazione WMS</p><h1>Configurazione</h1>
+<nav class="actions" aria-label="Sezioni configurazione">
+  @for (m of meta; track m.key) { <button class="secondary" [attr.aria-current]="entity === m.key ? 'page' : null" [disabled]="busy()" (click)="select(m.key)">{{ m.title }}</button> }
+</nav>
+@if (loading()) { <p role="status">Caricamento configurazione…</p> }
+@if (error()) { <p class="message error" role="alert">{{ error() }}</p><button (click)="load()" [disabled]="busy()">Riprova</button> }
+@if (!loading() && !error()) {
+  @if (editor()) {
+    <section class="panel"><h2>{{ original ? 'Modifica' : 'Nuovo' }} · {{ current().title }}</h2>
+      <form #editorForm="ngForm" (ngSubmit)="editorForm.valid && save()"><fieldset class="stack" [disabled]="busy()"><legend>Dati</legend>
+        @if (entity === 'practices') {
+          <div class="fields"><label>Cliente<select name="client_id" [(ngModel)]="draft['client_id']" required><option value="">Seleziona cliente</option>@for (r of values('clients',true); track r.id) { <option [value]="r.id">{{ label(r) }}</option> }</select></label>
+          <label>Modello<select name="model_id" [(ngModel)]="draft['model_id']" required><option value="">Seleziona modello</option>@for (r of values('practice_types',true); track r.id) { <option [value]="r.id">{{ label(r) }}</option> }</select></label>
+          <label>Inizio periodo<input type="date" name="period_start" [(ngModel)]="draft['period_start']" required></label>
+          <label>Fine periodo<input type="date" name="period_end" [(ngModel)]="draft['period_end']" required></label>
+          <label>Scadenza pratica<input type="date" name="due_date" [(ngModel)]="draft['due_date']" required></label></div>
+          <p>Le attività e le assegnazioni vengono copiate dal modello selezionato.</p>
+        } @else {
+          <div class="fields">
+            @for (f of current().fields; track f.key) {
+              <label>{{ f.label }}
+                @if (entity === 'groups' && f.key === 'role') { <select [name]="f.key" [(ngModel)]="draft[f.key]" required>@for (role of roles(); track role) { <option [value]="role">{{ role }}</option> }</select> }
+                @else if (entity === 'memberships' && (f.key === 'user_id' || f.key === 'group_id')) {
+                  <select [name]="f.key" [(ngModel)]="draft[f.key]" required><option value="">Seleziona</option>@for (r of values(f.key === 'user_id' ? 'users' : 'groups'); track r.id) { <option [value]="r.id">{{ label(r) }}</option> }</select>
+                } @else if (f.type === 'textarea') { <textarea [name]="f.key" [(ngModel)]="draft[f.key]"></textarea> }
+                @else { <input [name]="f.key" [type]="f.type || 'text'" [(ngModel)]="draft[f.key]" [readOnly]="!!original && f.key === 'id'" [required]="['id','name','code'].includes(f.key)"> }
+              </label>
+            }
+          </div><label class="check"><input type="checkbox" name="active" [(ngModel)]="active">Attivo</label>
+        }
+        @if (entity === 'practice_types') {
+          <label class="check"><input type="checkbox" name="requires_validation" [(ngModel)]="requiresValidation">Richiede validazione finale</label>
+          <h3>Attività del modello · {{ tasks.length }}</h3><p>Le modifiche al modello si applicano alle nuove pratiche.</p>
+          @for (t of tasks; track t; let i = $index) {
+            <section class="panel"><h3>{{ i + 1 }} · {{ t.code || 'Nuova attività' }} · {{ t.title }}</h3>
+              <div class="fields">
+                <label>Codice attività<input [name]="'code'+i" [ngModel]="t.code" (change)="renameTask(t,$any($event.target).value)" required></label>
+                <label>Titolo<input [name]="'title'+i" [(ngModel)]="t.title" required></label>
+                <label>Gruppo responsabile<select [name]="'group'+i" [(ngModel)]="t.assigned_group" required><option value="">Seleziona</option>@for(g of operators(); track g.id) { <option [value]="g.id">{{ label(g) }}{{ g.active === false ? ' (disattivo)' : '' }}</option> }</select></label>
+                <label>Giorni prima della scadenza<input type="number" min="0" max="3650" step="1" [name]="'days'+i" [(ngModel)]="t.days_before_due" required></label>
+              </div>
+              <label>Istruzioni operative<textarea [name]="'instructions'+i" [(ngModel)]="t.instructions"></textarea></label>
+              <label class="check"><input type="checkbox" [name]="'required'+i" [(ngModel)]="t.required">Obbligatoria</label>
+              <fieldset><legend>Dipendenze</legend>@for (other of tasks; track other) { @if (other !== t && other.code) { <label class="check"><input type="checkbox" [checked]="t.depends_on.includes(other.code)" (change)="toggle(t.depends_on,other.code,$any($event.target).checked)">{{ other.code }} · {{ other.title }}</label> } }</fieldset>
+              <h4>Esiti e attività successive</h4>
+              @for (choice of t.choices; track choice; let j = $index) {
+                <div class="panel"><label>Esito<input [name]="'outcome'+i+'-'+j" [(ngModel)]="choice.name" required></label>
+                  @for (other of tasks; track other) { @if (other !== t && other.code) { <label class="check"><input type="checkbox" [checked]="choice.destinations.includes(other.code)" (change)="toggle(choice.destinations,other.code,$any($event.target).checked)">{{ other.code }} · {{ other.title }}</label> } }
+                  <button type="button" class="secondary" (click)="t.choices.splice(j,1)">Rimuovi esito</button>
+                </div>
+              }
+              <div class="actions"><button type="button" class="secondary" (click)="t.choices.push({name:'',destinations:[]})">Aggiungi esito</button><button type="button" class="secondary" [disabled]="i === 0" (click)="move(i,-1)">Sposta su</button><button type="button" class="secondary" [disabled]="i === tasks.length-1" (click)="move(i,1)">Sposta giù</button><button type="button" class="secondary" (click)="removeTask(i)">Rimuovi attività</button></div>
+            </section>
+          }
+          <button type="button" class="secondary" (click)="addTask()">Aggiungi attività</button>
+        }
+        @if (formError()) { <p class="message error" role="alert">{{ formError() }}</p> }
+        <div class="actions"><button type="button" class="secondary" (click)="editor.set(false)">Annulla</button><button type="submit" [disabled]="editorForm.invalid">{{ busy() ? 'Salvataggio…' : 'Salva' }}</button></div>
+      </fieldset></form>
+    </section>
+  } @else {
+    <section class="panel"><div class="page-heading"><h2>{{ current().title }}</h2><button (click)="open()" [disabled]="busy()">{{ entity === 'practices' ? 'Nuova pratica' : 'Nuovo' }}</button></div>
+      <div class="table-wrap"><table><thead><tr>@for(f of current().fields; track f.key) { <th>{{ f.label }}</th> }<th>Stato</th><th>Azioni</th></tr></thead><tbody>
+        @for(row of rows(); track row.id) { <tr>@for(f of current().fields; track f.key) { <td>{{ display(row,f.key) }}</td> }<td>{{ entity === 'practices' ? row['status'] : row.active === false ? 'Disattivo' : 'Attivo' }}</td><td>
+          @if(entity === 'practices') { <a [routerLink]="['/practices',row.id]">Attività</a> } @else { <div class="actions"><button class="secondary" (click)="open(row)" [disabled]="busy()">Modifica</button><button class="secondary" (click)="remove(row)" [disabled]="busy()">Elimina</button></div> }
+        </td></tr> } @empty { <tr><td [attr.colspan]="current().fields.length+2">Nessun elemento.</td></tr> }
+      </tbody></table></div>
+    </section>
+  }
+}
