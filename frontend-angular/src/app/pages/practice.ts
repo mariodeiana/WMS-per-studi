@@ -16,6 +16,19 @@ export class Practice implements OnInit {
   groups = signal<{id: string; name: string}[]>([]); taskCode = ''; reason: Record<string, string> = {}; group: Record<string, string> = {};
   selection: Record<string, boolean> = {}; instruction = ''; outcome = ''; note = ''; private version = 0;
   attachments = viewChild(Attachments);
+  dossierTab = 'results';
+  statusLabel(value: string) { return ({DA_FARE:'Da fare',IN_LAVORAZIONE:'In corso',COMPLETATO:'Completato',COMPLETATA:'Completata',DA_VALIDARE:'Da validare',VALIDATA:'Validata',NON_VALIDATA:'Non validata',CHIUSA:'Chiusa',APERTA:'Aperta',IN_SANATORIA:'In sanatoria',DA_VERIFICARE:'Da verificare'} as Record<string,string>)[value] || value.replaceAll('_',' '); }
+  taskResult(t: Task) { return this.data()?.results.find(r=>r.id===t.result_id); }
+  taskHealth(t: Task) { return t.status==='COMPLETATO' ? (this.taskResult(t)?.outcome.includes('RILIEV') ? 'warning' : 'done') : t.reopen_reason ? 'reopened' : t.status==='IN_LAVORAZIONE' ? 'working' : 'pending'; }
+  groupName(id: string) { return this.groups().find(g=>g.id===id)?.name || id; }
+  visibleEvidence() { return this.data()?.evidence.filter(e=>!this.taskCode || e.related_task_code===this.taskCode) || []; }
+  visibleAudit() { return this.data()?.audit.filter(e=>!this.taskCode || e.details['task_code']===this.taskCode) || []; }
+  progressPercent() { const p=this.data()?.progress; return p?.total ? Math.round(p.completed/p.total*100) : 0; }
+  dossierKey(event: KeyboardEvent) {
+    const keys=['results','documents','audit']; let i=keys.indexOf(this.dossierTab);
+    if(event.key==='ArrowRight') i=(i+1)%3; else if(event.key==='ArrowLeft') i=(i+2)%3; else if(event.key==='Home') i=0; else if(event.key==='End') i=2; else return;
+    event.preventDefault(); this.dossierTab=keys[i]; (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[i]?.focus();
+  }
   manager() { return this.auth.session()?.active.role === 'MANAGER'; }
   validator() { return this.auth.session()?.active.role === 'VALIDATORE'; }
   ngOnInit() { this.route.paramMap.pipe(takeUntilDestroyed(this.destroy)).subscribe(params => { this.taskCode = params.get('code') || ''; void this.load(params.get('id') || ''); }); }

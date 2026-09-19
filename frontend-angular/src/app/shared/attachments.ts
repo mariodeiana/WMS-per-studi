@@ -3,15 +3,14 @@ import { FormsModule } from '@angular/forms';
 import { Attachment } from '../core/models';
 interface Draft { file: File; description: string; document_type: string; }
 @Component({ selector: 'wms-attachments', imports: [FormsModule], template: `
-  <fieldset [disabled]="disabled()"><legend>Evidenze</legend>
-    <label>Aggiungi documenti<input type="file" multiple (change)="add($event)"></label>
-    <small>Massimo 5 MB per documento.</small>
+  <fieldset class="attachments-editor" [disabled]="disabled()"><legend>Evidenze</legend>
+    <div class="attachment-toolbar"><label class="attachment-add">+ Aggiungi documenti<input aria-label="Aggiungi documenti" type="file" multiple (change)="add($event)"></label><small>Massimo 5 MB per documento.</small></div>
     @if (error()) { <p role="alert" class="message error">{{ error() }}</p> }
     @for (item of files(); track item; let i = $index) {
-      <div class="panel stack"><strong>{{ item.file.name }}</strong>
-        <label>Descrizione<input [(ngModel)]="item.description" [ngModelOptions]="{standalone:true}"></label>
+      <div class="attachment-draft"><strong>▤ {{ item.file.name }}</strong>
+        <label>Descrizione<input [(ngModel)]="item.description" [ngModelOptions]="{standalone:true}" placeholder="Descrizione"></label>
         <label>Tipo documento<input [(ngModel)]="item.document_type" [ngModelOptions]="{standalone:true}"></label>
-        <button type="button" class="secondary" (click)="remove(i)">Rimuovi {{ item.file.name }}</button>
+        <button type="button" class="secondary" (click)="remove(i)" [attr.aria-label]="'Rimuovi '+item.file.name">×</button>
       </div>
     }
   </fieldset>` })

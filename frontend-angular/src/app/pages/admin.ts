@@ -1,7 +1,8 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, ElementRef, Injector, OnInit, afterNextRender, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { Practice } from '../core/models';
 import { Api, message, segment } from '../core/api';
 
 interface Row { id: string; active?: boolean; [key: string]: unknown; }
@@ -15,7 +16,42 @@ interface Meta { key: string; title: string; fields: Field[]; }
 const fields = (...pairs: string[][]): Field[] => pairs.map(([key,label,type]) => ({key,label,type}));
 @Component({ selector: 'wms-admin', imports: [CommonModule, FormsModule, RouterLink], templateUrl: './admin.html' })
 export class Admin implements OnInit {
-  private api = inject(Api);
+  private api = inject(Api); private injector = inject(Injector);
+  editorDialog = viewChild<ElementRef<HTMLDialogElement>>('editorDialog');
+  practiceDialog = viewChild<ElementRef<HTMLDialogElement>>('practiceDialog');
+  modelTab = 'general'; expandedTask: TaskDraft | null = null;
+  practicePreview = signal<Practice | null>(null);
+  filter = '';
+  help() { return ({clients:'Completa e organizza le anagrafiche dei clienti.', practice_types:'Modelli di lavoro: attività, responsabilità, esiti e scadenze. Le modifiche si applicano alle nuove pratiche.', practices:'Pratiche generate dai modelli, con attività e assegnazioni già predisposte.', users:'Utenti e contesto operativo predefinito.', groups:'Gruppi di lavoro e responsabilità.', memberships:'Collega gli utenti ai gruppi e ai ruoli operativi.', assignment_policies:'Regole di presa in carico delle attività.'} as Record<string,string>)[this.entity] || ''; }
+  filteredRows() { const q=this.filter.trim().toLocaleLowerCase('it'); return this.rows().filter(row=>!q || this.current().fields.some(f=>this.display(row,f.key).toLocaleLowerCase('it').includes(q))); }
+  taskCount(row: Row) { return ((row['tasks'] || []) as unknown[]).length; }
+  groupName(id: string) { const group=this.values('groups').find(g=>g.id===id); return group ? this.label(group) : id || 'Gruppo da scegliere'; }
+  private reveal(dialog: 'editor' | 'practice') {
+    afterNextRender(()=>{
+      const el=(dialog==='editor'?this.editorDialog():this.practiceDialog())?.nativeElement;
+      if(el && (dialog==='editor'?this.editor():!!this.practicePreview()) && !el.open) el.showModal();
+    },{injector:this.injector});
+  }
+  closeEditor() { if(this.busy()) return; this.editorDialog()?.nativeElement.close(); this.editor.set(false); }
+  cancelEditor(event: Event) { event.preventDefault(); this.closeEditor(); }
+  closePractice() { this.practiceDialog()?.nativeElement.close(); this.practicePreview.set(null); }
+  async showPractice(row: Row) {
+    if(this.busy()) return; this.busy.set(true); this.error.set('');
+    try { this.practicePreview.set(await this.api.get<Practice>('/practices/'+segment(row.id))); this.reveal('practice'); }
+    catch(e) { this.error.set(message(e)); } finally { this.busy.set(false); }
+  }
+  tabKey(event: KeyboardEvent, type: 'entity' | 'model') {
+    const keys=type==='entity'?this.meta.map(m=>m.key):['general','tasks'];
+    const current=type==='entity'?this.entity:this.modelTab;
+    let index=keys.indexOf(current);
+    if(event.key==='ArrowRight') index=(index+1)%keys.length;
+    else if(event.key==='ArrowLeft') index=(index+keys.length-1)%keys.length;
+    else if(event.key==='Home') index=0;
+    else if(event.key==='End') index=keys.length-1;
+    else return;
+    event.preventDefault(); if(type==='entity') this.select(keys[index]); else this.modelTab=keys[index];
+    (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[index]?.focus();
+  }
   config = signal<Record<string, Row[]>>({}); roles = signal<string[]>([]); practices = signal<Row[]>([]);
   loading = signal(true); busy = signal(false); error = signal(''); editor = signal(false); formError = signal('');
   entity = 'groups'; original: Row | null = null; draft: Record<string, string> = {}; active = true; requiresValidation = true; tasks: TaskDraft[] = [];
@@ -47,16 +83,17 @@ export class Admin implements OnInit {
     } catch (e) { this.error.set(message(e)); } finally { this.loading.set(false); }
   }
   open(row: Row | null = null) {
+    this.modelTab='general'; this.expandedTask=null;
     this.original = row; this.draft = {}; this.formError.set('');
     for (const field of this.current().fields) this.draft[field.key] = String(row?.[field.key] ?? '');
     if (this.entity === 'groups' && !row) this.draft['role'] = 'OPERATORE';
     this.active = row?.active !== false; this.requiresValidation = row?.['requires_validation'] !== false;
     this.tasks = structuredClone((row?.['tasks'] || []) as TaskSpec[]).map(t => ({...t, depends_on:t.depends_on || [], choices:(t.outcomes || []).map(name => ({name,destinations:[...(t.transitions?.[name] || [])]}))}));
     if (this.entity === 'practices') this.draft['model_id'] = '';
-    this.editor.set(true);
+    this.editor.set(true); this.reveal('editor');
   }
-  select(entity: string) { this.entity = entity; this.editor.set(false); this.error.set(''); }
-  addTask() { this.tasks.push({code:'',title:'',instructions:'',assigned_group:'',days_before_due:0,required:true,depends_on:[],choices:[]}); }
+  select(entity: string) { this.entity = entity; this.filter=''; this.closeEditor(); this.error.set(''); }
+  addTask() { this.tasks.push({code:'',title:'',instructions:'',assigned_group:'',days_before_due:0,required:true,depends_on:[],choices:[]}); this.expandedTask=this.tasks[this.tasks.length-1]; }
   move(index: number, direction: number) { const next=index+direction; if (next<0 || next>=this.tasks.length) return; [this.tasks[index],this.tasks[next]]=[this.tasks[next],this.tasks[index]]; }
   removeTask(index: number) {
     const code = this.tasks[index].code;
@@ -77,7 +114,7 @@ export class Admin implements OnInit {
         body['tasks']=this.tasks.map(({choices,...task})=>({...task,outcomes:choices.map(c=>c.name.trim()),transitions:Object.fromEntries(choices.map(c=>[c.name.trim(),c.destinations]))}));
       }
       await this.api.post(this.entity==='practices'?'/admin/practices':`/admin/config/${segment(this.entity)}`,body);
-      this.editor.set(false); await this.load();
+      this.editorDialog()?.nativeElement.close(); this.editor.set(false); await this.load();
     } catch(e) { this.formError.set(message(e)); } finally { this.busy.set(false); }
   }
   async remove(row: Row) {

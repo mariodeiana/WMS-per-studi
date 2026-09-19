@@ -95,3 +95,19 @@ Risultato delle verifiche automatiche del blocco migrato: **57 test backend** e
 avvisi. I test Angular comprendono il ciclo di sessione, errori di rete e 401,
 editor di modelli e riferimenti delle transizioni, mantenimento dei dati dopo
 un errore del server, moduli incompleti e caricamento degli allegati.
+
+## Revisione interfacce e palette Manager
+
+Configurazione e dettaglio pratica/attività riprendono la palette della Scrivania
+Manager: blu scuro, bianco, grigi chiari e accenti oro. Gli stati operativi
+mantengono colori semantici. La configurazione usa finestre modali con intestazione
+e comandi fissi, schede per dati generali/attività, attività espandibili e ricerca
+nelle anagrafiche. Il dettaglio pratica separa attività, azioni e fascicolo a schede;
+risultati, documenti e allegati condividono componenti più compatti.
+
+Verificati nel browser sull'anteprima con dati temporanei: apertura/modifica modello,
+cambio scheda senza perdita dei dati, espansione attività, salvataggio e riapertura
+attività dal dettaglio Manager con conservazione del risultato nello storico.
+Confermati 57 test backend, 16 test Angular e build di produzione senza avvisi.
+Questo blocco riguarda configurazione, dettaglio e componenti condivisi; la revisione
+visiva completa delle scrivanie Operatore/Validatore resta da completare.
