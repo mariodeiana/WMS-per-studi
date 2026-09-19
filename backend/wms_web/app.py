@@ -40,7 +40,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   if path=="/api/manager/practices":self._api(lambda:self._manager_practices());return
   if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue_for(self._principal()));return
   if path=="/api/validation-history":self._api(lambda:self.service.validation_history_for(self._principal()));return
-  if path=="/api/work-queue":self._api(lambda:self.service.work_queue_for(self._principal()));return
+  if path=="/api/work-queue":self._api(lambda:self._with_client_names(self.service.work_queue_for(self._principal())));return
   if path.startswith("/api/evidence/"):
    eid=unquote(path[len("/api/evidence/"):]);disp=query.get("disposition",["inline"])[0]
    try:
@@ -90,7 +90,8 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    if group_id not in {g["id"] for g in self._assignment_groups()}:raise ValueError("Selezionare un gruppo operatore attivo")
    return self.service.assign_group_for(pid,code,group_id,principal)
  def _manager_practices(self):
-  rows=self.service.manager_practices_for(self._principal())
+  return self._with_client_names(self.service.manager_practices_for(self._principal()))
+ def _with_client_names(self,rows):
   clients={c["id"]:c["name"] for c in CONFIG.list("clients")}
   for row in rows:
    row["client_name"]=clients.get(row["client_id"],row["client_id"])

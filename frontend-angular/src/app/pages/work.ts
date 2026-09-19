@@ -20,7 +20,7 @@ export class Work implements OnInit {
   urgency(t: QueueTask) { const d=this.days(t); return !Number.isFinite(d) ? '' : d<0 ? 'Scaduta da '+Math.abs(d)+' gg' : d===0 ? 'Oggi' : d===1 ? 'Domani' : 'Tra '+d+' gg'; }
   rows(section: string) {
     const q=this.search.trim().toLocaleLowerCase('it');
-    return this.tasks().filter(t=>t.queue_section===section && (!q || [t.title,t.code,t.client_id,t.practice_id,t.practice_type_code,t.work_note,t.reopen_reason,t.result_note,t.outcome].join(' ').toLocaleLowerCase('it').includes(q)) && (section!=='ACTIVE' || this.filter==='all' || (this.filter==='late' && this.late(t)) || (this.filter==='working' && t.active && t.status==='IN_LAVORAZIONE') || (this.filter==='reopened' && !!t.reopen_reason) || (this.filter==='waiting' && !t.active)))
+    return this.tasks().filter(t=>t.queue_section===section && (!q || [t.title,t.code,t.client_id,t.client_name,t.practice_id,t.practice_type_code,t.work_note,t.reopen_reason,t.result_note,t.outcome].join(' ').toLocaleLowerCase('it').includes(q)) && (section!=='ACTIVE' || this.filter==='all' || (this.filter==='late' && this.late(t)) || (this.filter==='working' && t.active && t.status==='IN_LAVORAZIONE') || (this.filter==='reopened' && !!t.reopen_reason) || (this.filter==='waiting' && !t.active)))
       .sort((a,b)=>section==='RECENT_COMPLETED' ? (b.completed_at||'').localeCompare(a.completed_at||'') : Number(b.active)-Number(a.active) || a.due_date.localeCompare(b.due_date) || a.practice_id.localeCompare(b.practice_id) || a.code.localeCompare(b.code));
   }
   reset() { this.search=''; this.filter='all'; }

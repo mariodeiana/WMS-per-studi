@@ -22,7 +22,7 @@ export interface Task {
   result_id: string | null; work_note: string; reopen_reason: string;
 }
 export interface QueueTask extends Task {
-  practice_id: string; practice_type_code: string; client_id: string; queue_section: string;
+  practice_id: string; practice_type_code: string; client_id: string; client_name?: string; queue_section: string;
   completed_at?: string; outcome?: string; result_note?: string;
 }
 export interface AuditEvent { event_type: string; actor: string; at: string; details: Record<string, unknown>; }

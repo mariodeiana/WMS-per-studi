@@ -48,6 +48,16 @@ class WebAppTest(unittest.TestCase):
         self.login(actor)
         return self.request(f"/api/practices/{DEMO_PRACTICE_ID}/tasks/{code}/complete", "POST", {"actor": actor})
 
+    def test_operator_queue_includes_same_client_names_as_manager(self):
+        _, body, _ = self.request("/api/manager/practices")
+        names = {p["client_id"]: p["client_name"] for p in json.loads(body)}
+        self.login("anna.operatore")
+        _, body, _ = self.request("/api/work-queue")
+        rows = json.loads(body)
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(row["client_name"], names[row["client_id"]])
+
     def test_serves_manager_queue_task_and_validation_views(self):
         for path, marker in [
             ("/", b"Pratiche in esecuzione"),
