@@ -532,3 +532,5 @@ td small { display:block; margin-top:6px; }
 .notice { border-left:4px solid #d98e04; padding:16px; background:#fff7e7; }
 .message.error { margin:16px 0; }
 @media(max-width:700px) { .topbar { height:auto; min-height:72px; padding:16px; flex-wrap:wrap; gap:16px; } .identity { flex-wrap:wrap; } main { padding:24px 16px; } .kpi-panel { flex-wrap:wrap; gap:16px; } }
+
+.environment-badge{display:inline-block;margin-left:8px;padding:3px 6px;border:1px solid #65727f;border-radius:4px;font-size:10px;vertical-align:middle;color:#e9b949;letter-spacing:.06em}

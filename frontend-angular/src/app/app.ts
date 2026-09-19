@@ -3,11 +3,13 @@ import { NavigationError, Router, RouterLink, RouterOutlet } from '@angular/rout
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Auth, home } from './core/auth';
-import { message } from './core/api';
+import { Api, message } from './core/api';
 @Component({ selector: 'app-root', imports: [RouterOutlet, RouterLink, FormsModule], templateUrl: './app.html' })
 export class App {
+  environment = signal('');
+  private api = inject(Api);
   auth = inject(Auth); home = home; busy = signal(false); error = signal('');
-  constructor() { inject(Router).events.pipe(takeUntilDestroyed()).subscribe(event => { if (event instanceof NavigationError) this.error.set(message(event.error)); }); }
+  constructor() { void this.api.get<{environment:string}>('/runtime').then(r=>this.environment.set(r.environment)).catch(()=>{}); inject(Router).events.pipe(takeUntilDestroyed()).subscribe(event => { if (event instanceof NavigationError) this.error.set(message(event.error)); }); }
   reload() { location.reload(); }
   async switchRole(id: string) { await this.run(() => this.auth.switchRole(id)); }
   async logout() { await this.run(() => this.auth.logout()); }

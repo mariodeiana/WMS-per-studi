@@ -3,7 +3,7 @@ import argparse,base64,json,mimetypes,os
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs,unquote,urlparse
+from urllib.parse import parse_qs,unquote,urlparse,quote
 from backend.wms_core.models import NonConformity,UserRole
 from backend.wms_core.workflow import WorkflowError,define_corrective_action
 from backend.wms_web.auth import SessionRegistry
@@ -12,6 +12,8 @@ from backend.wms_web.config_models import create_configured_practice
 from backend.wms_web.organization_service import OrganizationalPracticeService
 from backend.wms_web.service import DEMO_PRACTICE_ID, DEMO_CLIENT_NAMES
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DATA_DIR=Path(os.environ.get("WMS_DATA_DIR",ROOT));DATA_DIR.mkdir(parents=True,exist_ok=True);DEMO_STATE=DATA_DIR/".wms-demo-state.pkl";CONFIG_STATE=DATA_DIR/".wms-config.json";WMS_ENV=os.environ.get("WMS_ENV","DEV").upper();CONFIG=AdminConfigStore(CONFIG_STATE,seed_demo=WMS_ENV!="PROD");AUTH=SessionRegistry(CONFIG)
+ANGULAR_FRONTEND=Path(os.environ.get("WMS_ANGULAR_DIR",ROOT/"frontend-angular/dist/frontend-angular/browser")).resolve()
+FRONTEND_MODE=os.environ.get("WMS_FRONTEND","legacy").lower()
 class WMSRequestHandler(BaseHTTPRequestHandler):
  service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=WMS_ENV!="PROD",seed_demo=WMS_ENV!="PROD");debug_mode=False
  def _token(self):
@@ -28,7 +30,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
  def do_GET(self):
   parsed=urlparse(self.path);path=parsed.path;query=parse_qs(parsed.query)
   if path=="/api/health":self._json({"status":"ok"});return
-  if path=="/api/runtime":self._json({"debug":bool(self.debug_mode),"environment":WMS_ENV});return
+  if path=="/api/runtime":self._json({"debug":bool(self.debug_mode),"environment":WMS_ENV,"frontend":FRONTEND_MODE});return
   if path=="/api/session":
    try:self._json(self._session())
    except PermissionError as e:self._json({"error":str(e)},401)
@@ -53,6 +55,8 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    else:self._json({"error":"Endpoint inesistente"},404)
    return
   if path.startswith("/api/practices/"):self._api(lambda:self.service.get_for(unquote(path[len("/api/practices/"):]),self._principal()));return
+  if path.startswith("/api/"):self._json({"error":"Endpoint inesistente"},404);return
+  if FRONTEND_MODE=="angular":self._angular(path,query);return
   if path not in {"/login.html","/login.js","/styles.css"} and path.endswith((".html","/")) and not self._require_session():self._redirect("/login.html");return
   self._static(path)
  def do_POST(self):
@@ -140,6 +144,17 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   try:l=int(self.headers.get("Content-Length","0"));return json.loads(self.rfile.read(l)) if l else {}
   except (ValueError,json.JSONDecodeError):return {}
  def _redirect(self,path):self.send_response(303);self.send_header("Location",path);self.end_headers()
+ def _angular(self,path,query):
+  legacy={"/index.html":"/context","/login.html":"/login","/queue.html":"/work","/configuration.html":"/admin","/validation-list.html":"/validation"}
+  if path in legacy:self._redirect(legacy[path]);return
+  if path in {"/practice.html","/validation.html","/task.html","/manager-task.html"}:
+   pid=quote(query.get("practice",[""])[0],safe="");code=quote(query.get("task",[""])[0],safe="")
+   dest=(f"/work/{pid}/{code}" if path=="/task.html" else f"/practices/{pid}/tasks/{code}" if path=="/manager-task.html" else f"/practices/{pid}") if pid else "/context"
+   self._redirect(dest);return
+  is_route=path in {"/","/login","/manager","/work","/validation","/admin","/context"} or path.startswith(("/work/","/practices/"))
+  target=(ANGULAR_FRONTEND/("index.html" if is_route else unquote(path).lstrip("/"))).resolve()
+  if ANGULAR_FRONTEND not in target.parents or not target.is_file():self._json({"error":"Risorsa inesistente"},404);return
+  data=target.read_bytes();self.send_response(200);self.send_header("Content-Type",mimetypes.guess_type(target.name)[0] or "application/octet-stream");self.send_header("Content-Length",str(len(data)));self.send_header("Cache-Control","no-store" if target.name=="index.html" else "public, max-age=86400");self.end_headers();self.wfile.write(data)
  def _static(self,path):
   relative="index.html" if path in {"/","/index.html"} else path.lstrip("/");target=(FRONTEND/relative).resolve()
   if FRONTEND not in target.parents or not target.is_file():self._json({"error":"Risorsa inesistente"},404);return
@@ -159,6 +174,7 @@ def _migrate_nonconformities(service):
    validation=next((r for r in reversed(p.results) if r.action=='VALIDATION' and r.outcome=='NON_VALIDATA'),None);reason=validation.note if validation else 'Non conformità rilevata in validazione';actor=validation.actor if validation else 'sistema';nc=NonConformity(id='NC-0001',reason=reason,opened_by=actor);p.nonconformities.append(nc);p.record('NONCONFORMITY_OPENED',actor,nc_id=nc.id,reason=reason,source='VALIDATION',migrated=True);changed=True
   if changed:service._persist()
 def create_server(host="127.0.0.1",port=8000,debug=False):
+ if FRONTEND_MODE=="angular" and not (ANGULAR_FRONTEND/"index.html").is_file():raise RuntimeError("Build Angular mancante")
  _migrate_nonconformities(WMSRequestHandler.service)
  CONFIG.sync_clients(
   (p.client_id for p in WMSRequestHandler.service._practices.values()),
