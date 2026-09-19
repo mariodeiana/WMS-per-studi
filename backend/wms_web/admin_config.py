@@ -98,12 +98,20 @@ class AdminConfigStore:
             self._persist(data)
         return data
 
-    def sync_clients(self, client_ids):
+    def sync_clients(self, client_ids, client_names=None):
+        client_names = client_names or {}
         with self._lock:
             existing = {r["id"] for r in self._data["clients"]}
             missing = sorted(set(client_ids) - existing)
             for code in missing:
-                self._data["clients"].append({"id": code, "name": code, "tax_code": "", "vat_number": "", "email": "", "active": True})
+                self._data["clients"].append({
+                    "id": code,
+                    "name": client_names.get(code, code),
+                    "tax_code": "",
+                    "vat_number": "",
+                    "email": "",
+                    "active": True,
+                })
             if missing:
                 self._persist()
 

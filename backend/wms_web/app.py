@@ -10,7 +10,7 @@ from backend.wms_web.auth import SessionRegistry
 from backend.wms_web.admin_config import AdminConfigStore
 from backend.wms_web.config_models import create_configured_practice
 from backend.wms_web.organization_service import OrganizationalPracticeService
-from backend.wms_web.service import DEMO_PRACTICE_ID
+from backend.wms_web.service import DEMO_PRACTICE_ID, DEMO_CLIENT_NAMES
 ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DATA_DIR=Path(os.environ.get("WMS_DATA_DIR",ROOT));DATA_DIR.mkdir(parents=True,exist_ok=True);DEMO_STATE=DATA_DIR/".wms-demo-state.pkl";CONFIG_STATE=DATA_DIR/".wms-config.json";WMS_ENV=os.environ.get("WMS_ENV","DEV").upper();CONFIG=AdminConfigStore(CONFIG_STATE,seed_demo=WMS_ENV!="PROD");AUTH=SessionRegistry(CONFIG)
 class WMSRequestHandler(BaseHTTPRequestHandler):
  service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=WMS_ENV!="PROD",seed_demo=WMS_ENV!="PROD");debug_mode=False
@@ -36,7 +36,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   if path.startswith("/api/") and not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
   if path=="/api/admin/practices":self._api(lambda:(self._require_admin(),self._configured_practices())[1]);return
   if path=="/api/admin/config":self._api(lambda:(self._require_admin(),CONFIG.snapshot())[1]);return
-  if path=="/api/manager/practices":self._api(lambda:self.service.manager_practices_for(self._principal()));return
+  if path=="/api/manager/practices":self._api(lambda:self._manager_practices());return
   if path=="/api/validation-queue":self._api(lambda:self.service.validation_queue_for(self._principal()));return
   if path=="/api/validation-history":self._api(lambda:self.service.validation_history_for(self._principal()));return
   if path=="/api/work-queue":self._api(lambda:self.service.work_queue_for(self._principal()));return
@@ -81,6 +81,12 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   elif action=="validate" and len(parts)==4:self._api(lambda:self.service.validate_for(pid,principal,outcome or "VALIDATA",note,attachments))
   elif action=="close" and len(parts)==4:self._api(lambda:self.service.close_for(pid,principal,outcome or "CHIUSA",note,attachments))
   else:self._json({"error":"Endpoint inesistente"},404)
+ def _manager_practices(self):
+  rows=self.service.manager_practices_for(self._principal())
+  clients={c["id"]:c["name"] for c in CONFIG.list("clients")}
+  for row in rows:
+   row["client_name"]=clients.get(row["client_id"],row["client_id"])
+  return rows
  def _configured_practices(self):
   with self.service._lock:
    return [{"id":p.id,"client_id":p.client_id,"practice_type_code":p.practice_type_code,"period_start":p.period_start,"period_end":p.period_end,"due_date":p.due_date,"status":p.status.value} for p in reversed(list(self.service._practices.values()))]
@@ -138,7 +144,10 @@ def _migrate_nonconformities(service):
   if changed:service._persist()
 def create_server(host="127.0.0.1",port=8000,debug=False):
  _migrate_nonconformities(WMSRequestHandler.service)
- CONFIG.sync_clients(p.client_id for p in WMSRequestHandler.service._practices.values())
+ CONFIG.sync_clients(
+  (p.client_id for p in WMSRequestHandler.service._practices.values()),
+  DEMO_CLIENT_NAMES if WMS_ENV != "PROD" else {},
+ )
  WMSRequestHandler.debug_mode=debug
  return ThreadingHTTPServer((host,port),WMSRequestHandler)
 def main():

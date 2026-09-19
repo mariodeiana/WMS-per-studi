@@ -12,7 +12,7 @@ from wms_core.workflow import WorkflowError, assign_task, close_practice, comple
 class LipeWorkflowTest(unittest.TestCase):
     def build_practice(self) -> Practice:
         practice = Practice(
-            id="P-2026-0001", practice_type_code="LIPE_TRIM", client_id="CLIENT-001",
+            id="P-2026-0001", practice_type_code="LIPE_TRIM", client_id="000001",
             period_start="2026-04-01", period_end="2026-06-30", due_date="2026-09-30",
             tasks=build_lipe_trim_tasks(),
         )
@@ -82,7 +82,7 @@ class LipeWorkflowTest(unittest.TestCase):
         return Practice(
             id="P-WF-001",
             practice_type_code="TEST_WORKFLOW",
-            client_id="CLIENT-001",
+            client_id="000001",
             period_start="2026-09-01",
             period_end="2026-09-30",
             due_date="2026-09-30",

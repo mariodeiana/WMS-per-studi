@@ -27,7 +27,21 @@ DEMO_USERS = {
     "marta.manager": UserRole.MANAGER,
 }
 
-DEMO_CLIENTS = ["CLIENT-001", "CLIENT-002", "CLIENT-003", "CLIENT-004", "CLIENT-005"]
+DEMO_CLIENTS = [
+    "000001",
+    "000002",
+    "000003",
+    "000004",
+    "000005",
+]
+
+DEMO_CLIENT_NAMES = {
+    "000001": "Rossi Srl",
+    "000002": "Studio Serra",
+    "000003": "Studio Associato Piras e Meloni",
+    "000004": "Consorzio Servizi Aziendali Gallura",
+    "000005": "Società Cooperativa Servizi Amministrativi della Sardegna",
+}
 DEMO_PRACTICE_TYPES = ["LIPE_TRIM", "F24_MENSILE", "RICONC_BANCA", "CU_ANNUALE", "BILANCIO_VER"]
 DEMO_TYPE_ID = {
     "LIPE_TRIM": "LIPE",
@@ -42,7 +56,7 @@ def build_demo_practice() -> Practice:
     practice = Practice(
         id=DEMO_PRACTICE_ID,
         practice_type_code="LIPE_TRIM",
-        client_id="CLIENT-001",
+        client_id="000001",
         period_start="2026-04-01",
         period_end="2026-06-30",
         due_date="2026-09-30",

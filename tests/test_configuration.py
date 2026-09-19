@@ -49,7 +49,7 @@ class ConfigurationTest(unittest.TestCase):
         store=AdminConfigStore(self.path)
         self.assertEqual(len(store.list('practice_types')),6)
         self.assertIn('custom',[g['id'] for g in store.list('groups')])
-        store.sync_clients(['CLIENT-001','CLIENT-001'])
+        store.sync_clients(['000001','000001'])
         self.assertEqual(len(store.list('clients')),1)
         self.assertEqual(AdminConfigStore(self.path).snapshot(),store.snapshot())
 
