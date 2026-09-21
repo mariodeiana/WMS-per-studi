@@ -1,5 +1,9 @@
 # Indice del know-how
 
+## Dubbi aperti
+
+- [ABBI DUBBI — quesiti per il professionista](ABBI-DUBBI.md).
+
 ## Documentazione corrente
 
 1. [Regola universale degli ambienti](../AGENTS.md).
