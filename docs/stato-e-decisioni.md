@@ -87,3 +87,9 @@ Backup completo SQL e file:
 Verificata identità dei contenuti di utenti, gruppi, appartenenze, pratiche e
 inclusioni nel Repertorio prima/dopo. Migrazioni 1 e 2 applicate.
 Collaudo: 94 test backend, 53 Angular, 9 PostgreSQL; health e runtime TEST validi.
+
+La validazione finale è un'attività reale, eseguita da un VALIDATORE e registrata
+dal motore con risultato VALIDATION, autore, data, note ed evidenze. Il nodo apre
+la sua sezione operativa e mostra stato e ultimo risultato; INIZIO e FINE soltanto
+sono simboli convenzionali. Rilascio TEST: asc-wms:test-validation-20260922.
+Verificati 55 test Angular; nessuna modifica a schema o regole di autorizzazione.

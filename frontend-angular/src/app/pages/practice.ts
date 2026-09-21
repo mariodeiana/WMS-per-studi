@@ -13,6 +13,12 @@ import { Results } from '../shared/results';
 @Component({ selector: 'wms-practice', imports: [CommonModule, FormsModule, RouterLink, Attachments, EvidenceList, Results, WorkflowGraph], templateUrl: './practice.html' })
 export class Practice implements OnInit {
   private router=inject(Router);
+  openValidation() {
+    this.practiceView='dossier';
+    setTimeout(()=>{const section=document.getElementById('validation-activity');section?.scrollIntoView({block:'center',behavior:'smooth'});section?.focus();},0);
+  }
+  validationResults() {return this.data()?.results.filter(r=>r.action==='VALIDATION') || [];}
+
   openGraphTask(code:string) { const p=this.data(); if(p) void this.router.navigate(['/practices',p.id,'tasks',code]); }
   private api = inject(Api); private route = inject(ActivatedRoute); private destroy = inject(DestroyRef);
   auth = inject(Auth); data = signal<PracticeData | null>(null); loading = signal(true); busy = signal(false); error = signal('');

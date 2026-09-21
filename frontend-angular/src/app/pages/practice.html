@@ -10,7 +10,7 @@
       <button type="button" role="tab" id="practice-dossier-tab" aria-controls="practice-dossier" [attr.aria-selected]="practiceView==='dossier'" [tabIndex]="practiceView==='dossier'?0:-1" (click)="practiceView='dossier'" (keydown)="practiceKey($event)">Fascicolo</button>
       <button type="button" role="tab" id="practice-graph-tab" aria-controls="practice-graph" [attr.aria-selected]="practiceView==='graph'" [tabIndex]="practiceView==='graph'?0:-1" (click)="practiceView='graph'" (keydown)="practiceKey($event)">Grafo</button>
     </div>
-    @if(practiceView==='graph') { <section id="practice-graph" role="tabpanel" aria-labelledby="practice-graph-tab"><wms-workflow-graph [tasks]="p.tasks" [requiresValidation]="p.requires_validation" [results]="p.results" [audit]="p.audit" [practiceStatus]="p.status" (nodeOpen)="openGraphTask($event)" /></section> }
+    @if(practiceView==='graph') { <section id="practice-graph" role="tabpanel" aria-labelledby="practice-graph-tab"><wms-workflow-graph [tasks]="p.tasks" [requiresValidation]="p.requires_validation" (validationOpen)="openValidation()" [results]="p.results" [audit]="p.audit" [practiceStatus]="p.status" (nodeOpen)="openGraphTask($event)" /></section> }
   }
   <div id="practice-dossier" [attr.role]="taskCode ? null : 'tabpanel'" [attr.aria-labelledby]="taskCode ? null : 'practice-dossier-tab'" [hidden]="!taskCode && practiceView!=='dossier'">
   @if(!taskCode) {
@@ -71,6 +71,14 @@
           @if(p.status === 'VALIDATA' || p.status === 'CHIUSA') { <p class="editor-help">Pratica {{ statusLabel(p.status).toLowerCase() }}. Attività disponibile in consultazione.</p> }
         </section>
       } }
+      @if(!taskCode && p.requires_validation) {
+        <section id="validation-activity" tabindex="-1" class="workspace-card sidebar-card">
+          <p class="eyebrow">Attività · VALIDATORE</p><h2>Validazione finale</h2>
+          <p>{{p.status==='DA_VALIDARE' ? 'Da eseguire dal validatore.' : p.status==='NON_VALIDATA' ? 'Esito negativo: correzione richiesta.' : p.status==='VALIDATA' || p.status==='CHIUSA' ? 'Validazione eseguita.' : 'In attesa del completamento delle attività precedenti.'}}</p>
+          @for(result of validationResults(); track result.id) { <p><strong>{{result.outcome}}</strong> · {{result.actor}} · {{result.timestamp | date:'dd/MM/yyyy HH:mm'}}<br>{{result.note}}</p> }
+          @if(!validator()) { <p class="editor-help">L’esecuzione è riservata al ruolo Validatore. Esiti ed evidenze restano nel fascicolo.</p> }
+        </section>
+      }
       @if(!taskCode && (manager() || validator())) {
         <section class="workspace-card sidebar-card"><p class="eyebrow">{{ validator() ? 'Decisione del validatore' : 'Azioni del supervisore' }}</p><h2>{{ validator() ? 'Validazione' : 'Chiusura pratica' }}</h2>
           @if((manager() && canClose()) || (validator() && p.status === 'DA_VALIDARE')) {

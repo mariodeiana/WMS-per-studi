@@ -72,6 +72,20 @@ describe('Workflow graph interaction',()=>{
     TestBed.inject(NgZone).runOutsideAngular(()=>{graph.open('A');graph.open('B');graph.open('A');});
     expect(received).toEqual(['A','B','A']);expect(inside).toBeTrue();
   });
+  it('opens the real validation activity and shows its persisted outcome and author',()=>{
+    const fixture=TestBed.createComponent(WorkflowGraph),graph=fixture.componentInstance;
+    fixture.componentRef.setInput('tasks',[{code:'A',title:'A',transitions:{}}]);
+    fixture.componentRef.setInput('requiresValidation',true);
+    fixture.componentRef.setInput('practiceStatus','NON_VALIDATA');
+    fixture.componentRef.setInput('results',[{action:'VALIDATION',outcome:'NON_VALIDATA',actor:'Valeria',timestamp:'2026-09-22T01:00:00Z'}]);
+    fixture.detectChanges();
+    const opened=jasmine.createSpy();graph.validationOpen.subscribe(opened);
+    const button=[...fixture.nativeElement.querySelectorAll('button')].find((b:any)=>b.textContent.trim()==='VALIDAZIONE FINALE') as HTMLButtonElement;
+    button.click();
+    expect(opened).toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Valeria');
+    expect(fixture.nativeElement.textContent).toContain('correzione richiesta');
+  });
   it('never changes nodes or creates edges from a practice view or a busy editor',()=>{
     const fixture=TestBed.createComponent(WorkflowGraph), graph=fixture.componentInstance;
     const connect=jasmine.createSpy(),move=jasmine.createSpy();

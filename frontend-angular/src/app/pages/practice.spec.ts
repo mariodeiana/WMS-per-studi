@@ -14,6 +14,14 @@ function data():PracticeData {
 describe('Practice dossier',()=>{
  beforeEach(()=>TestBed.configureTestingModule({providers:[provideRouter([]),{provide:ActivatedRoute,useValue:{paramMap:EMPTY}},{provide:Api,useValue:{}},{provide:Auth,useValue:{session:signal(null)}}]}));
  function page() { const fixture=TestBed.createComponent(Practice);fixture.componentInstance.data.set(data());fixture.componentInstance.loading.set(false);return fixture; }
+ it('opens the validation section from the graph without creating an operator task',()=>{
+   const f=page(),p=f.componentInstance;
+   p.data.set({...data(),requires_validation:true,status:'DA_VALIDARE'});
+   p.practiceView='graph';p.openValidation();f.detectChanges();
+   expect(p.practiceView).toBe('dossier');
+   expect(f.nativeElement.querySelector('#validation-activity').textContent).toContain('Da eseguire dal validatore');
+   expect(p.data()!.tasks.length).toBe(3);
+ });
  it('defaults to the dossier, orders reached activities and leaves the full graph accessible',()=>{
    const f=page(),p=f.componentInstance;f.detectChanges();
    expect(p.visibleTasks().map(t=>t.code)).toEqual(['A','B']);

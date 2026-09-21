@@ -65,6 +65,7 @@ export class Admin implements OnInit, OnDestroy {
   editorDialog = viewChild<ElementRef<HTMLDialogElement>>('editorDialog');
   practiceDialog = viewChild<ElementRef<HTMLDialogElement>>('practiceDialog');
   edgeDraft: {from:string;to:string;outcome:string} | null = null; originalEdge: GraphEdge | null = null; edgeError='';
+  validationSelected = false;
   editorExpanded = false;
   clientTab = 'general'; repertoire: string[] = [];
   clientTabs = [{key:'general',label:'Anagrafica'},{key:'fiscal',label:'Dati fiscali'},{key:'repertoire',label:'REPERTORIO'},{key:'practices',label:'Pratiche'}];
@@ -144,7 +145,7 @@ export class Admin implements OnInit, OnDestroy {
     this.clientTab='general'; this.repertoire=[...((row?.['repertoire'] || []) as string[])];
     this.draftOwner=this.auth.session()?.user.username;
     this.draftId=this.newDraftId();this.draftRevision=0;this.draftMessage.set('Le modifiche sono salvate automaticamente come bozza.');this.draftProblem.set(false);this.graphTask=null;
-    this.modelTab='general'; this.expandedTask=null; this.edgeDraft=null; this.originalEdge=null;
+    this.validationSelected=false; this.modelTab='general'; this.expandedTask=null; this.edgeDraft=null; this.originalEdge=null;
     this.original = row; this.draft = {}; this.formError.set('');
     for (const field of this.current().fields) this.draft[field.key] = String(row?.[field.key] ?? '');
     if (this.entity === 'clients') {
@@ -177,7 +178,7 @@ export class Admin implements OnInit, OnDestroy {
     if(signature!==this.graphSignature) { this.graphSignature=signature; this.graphSnapshot=structuredClone(nodes); }
     return this.graphSnapshot;
   }
-  openGraphTask(code:string) { this.graphTask=this.tasks.find(t=>t.code===code)||null; }
+  openGraphTask(code:string) { this.validationSelected=false; this.graphTask=this.tasks.find(t=>t.code===code)||null; }
   moveGraphNode(change:{code:string;position:Point}) {
     if(this.busy()) return;
     const task=this.tasks.find(t=>t.code===change.code); if(task) task.graph_position={...change.position};

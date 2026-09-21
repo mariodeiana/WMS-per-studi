@@ -9,7 +9,7 @@ export class WorkflowGraph {
   requiresValidation=input(false);
   tasks=input<GraphTask[]>([]); design=input(false); disabled=input(false);
   results=input<Result[]>([]); audit=input<AuditEvent[]>([]); practiceStatus=input('');
-  newNode=output<Point>();
+  newNode=output<Point>(); validationOpen=output<void>();
   flow=viewChild(FFlowComponent);flowHost=viewChild('flowHost',{read:ElementRef<HTMLElement>});
   nodeOpen=output<string>(); edgeOpen=output<GraphEdge>(); connect=output<{from:string;to:string;outcome:string}>();
   positionChange=output<{code:string;position:Point}>(); arrange=output<void>();
@@ -38,6 +38,11 @@ export class WorkflowGraph {
   });
   nodeGroup(node:GraphNode) { const task=this.tasks().find(t=>t.code===node.code);return this.responsibleGroups().find(g=>g.id===task?.assigned_group); }
   nodeKinds(node:GraphNode) { return graphNodeKinds(node,this.edges()); }
+  validationState() {
+    return ({DA_VALIDARE:'Da eseguire',VALIDATA:'Validata',CHIUSA:'Validata',NON_VALIDATA:'Non validata — correzione richiesta'} as Record<string,string>)[this.practiceStatus()] || 'In attesa delle attività precedenti';
+  }
+  validationResult() { return this.results().filter(r=>r.action==='VALIDATION').sort((a,b)=>b.timestamp.localeCompare(a.timestamp))[0]; }
+  openValidation() { if(!this.disabled()) this.zone.run(()=>this.validationOpen.emit()); }
   isMeta(code:string) {return ['@START','@END','@VALIDATION'].includes(code);}
   editEdge(edge:GraphEdge) {
     if(!this.design() || this.disabled() || edge.automatic) return;
@@ -46,7 +51,7 @@ export class WorkflowGraph {
   nodeSummary(node:GraphNode) {
     if(node.code==='@START') return 'INIZIO · Avvia tutte le attività contrassegnate come iniziali.';
     if(node.code==='@END') return 'FINE · La pratica termina dopo il completamento dei rami, l’eventuale validazione e la chiusura.';
-    if(node.code==='@VALIDATION') return 'VALIDAZIONE FINALE · Fase prevista dal tipo pratica, dopo il completamento di tutti i rami raggiunti.';
+    if(node.code==='@VALIDATION') return 'VALIDAZIONE FINALE · Attività del VALIDATORE. Registra esito, autore, data, note ed evidenze dopo il completamento dei rami raggiunti.';
     return graphNodeSummary(this.tasks().find(t=>t.code===node.code),this.nodeKinds(node)); }
   nodeBackground(node:GraphNode) { if(node.code==='@START') return '#dcfce7'; if(node.code==='@END') return '#fee2e2'; if(node.code==='@VALIDATION') return '#fef3c7'; return graphKindBackground(this.nodeKinds(node)); }
   arrangeNodes() { this.endPosition.set(null); this.arrange.emit(); }

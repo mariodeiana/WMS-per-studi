@@ -22,7 +22,12 @@
           <article fNode [fNodeId]="node.code" [fNodePosition]="node.position" (fNodePositionChange)="moved(node.code,$event)" [fNodeDraggingDisabled]="!design() || disabled()" class="graph-node" [attr.title]="nodeSummary(node)" [style.background]="nodeBackground(node)" [class.graph-orphan]="orphan(node.code)" [attr.data-state]="node.state" [class.graph-end]="node.code==='@END'" [class.graph-start]="node.code==='@START'" [class.graph-meta]="isMeta(node.code)">
             @if(isMeta(node.code)) {
               @if(node.code!=='@START') { <span fConnector fConnectorType="target" [fConnectorId]="port(node.code,'in:')" fConnectorConnectableSide="left" [fConnectorMultiple]="true" class="graph-port graph-input"></span> }
-              <div fDragHandle class="graph-meta-title">{{node.title}}</div>
+              @if(node.code==='@VALIDATION') {
+                <div class="graph-validation-heading">VALIDATORE</div>
+                <button type="button" class="graph-node-open" [disabled]="disabled()" (pointerdown)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()" (click)="$event.stopPropagation(); openValidation()">VALIDAZIONE FINALE</button>
+                <small>{{design() ? 'Attività obbligatoria del validatore' : validationState()}}</small>
+                @if(!design() && validationResult(); as result) { <small>{{result.outcome}} · {{result.actor}}</small> }
+              } @else { <div fDragHandle class="graph-meta-title">{{node.title}}</div> }
               @if(node.code!=='@END') { <span fConnector fConnectorType="source" [fConnectorId]="outputPort(node.code,'*')" fConnectorConnectableSide="right" [fConnectorMultiple]="true" [fConnectorDisabled]="true" class="graph-port graph-output"></span> }
             } @else {
             <span fConnector fConnectorType="target" [fConnectorId]="port(node.code,'in:')" fConnectorConnectableSide="left" [fConnectorMultiple]="true" class="graph-port graph-input" [attr.aria-label]="'Ingresso '+node.code"></span>
@@ -36,5 +41,5 @@
       </f-canvas>
     </f-flow>
   } @else { <p class="empty">Aggiungi un’attività per iniziare il disegno.</p> }
-  <p class="graph-footnote">{{ design() ? 'Le frecce tratteggiate rappresentano una fine ramo implicita. Spostare i nodi cambia solo il disegno. Le modifiche vengono applicate con Salva modifiche.' : 'INIZIO e FINE sono nodi di rappresentazione. Tutti i rami raggiunti, l’eventuale validazione e la chiusura prevista devono essere completati.' }}</p>
+  <p class="graph-footnote">{{ design() ? 'Le frecce tratteggiate rappresentano una fine ramo implicita. Spostare i nodi cambia solo il disegno. Le modifiche vengono applicate con Salva modifiche.' : 'INIZIO e FINE sono simboli; VALIDAZIONE FINALE è un’attività del validatore. Tutti i rami raggiunti, l’eventuale validazione e la chiusura prevista devono essere completati.' }}</p>
 </section>

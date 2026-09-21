@@ -89,9 +89,12 @@
               <div class="workspace-toolbar"><strong>{{ tasks.length }} attività nel modello</strong><button type="button" class="secondary" (click)="addTask()">+ Aggiungi attività</button></div>
               <p class="editor-help">Apri un’attività per modificarla. L’ordine è visivo. Le transizioni definiscono il percorso; la casella Nodo iniziale definisce gli avvii. Più destinazioni attivano rami paralleli.</p>
               @if(modelTab === 'tasks') {
-                <div class="graph-design-layout" [class.has-inspector]="graphTask || edgeDraft"><div class="graph-design-canvas"><wms-workflow-graph [tasks]="graphTasks()" [requiresValidation]="requiresValidation" [design]="true" [disabled]="busy()" (newNode)="addTask($event)" (nodeOpen)="openGraphTask($event)" (connect)="newEdge($event)" (edgeOpen)="editEdge($event)" (positionChange)="moveGraphNode($event)" (arrange)="arrangeGraph()" />
+                <div class="graph-design-layout" [class.has-inspector]="graphTask || edgeDraft || (validationSelected && requiresValidation)"><div class="graph-design-canvas"><wms-workflow-graph [tasks]="graphTasks()" [requiresValidation]="requiresValidation" (validationOpen)="validationSelected=true; graphTask=null" [design]="true" [disabled]="busy()" (newNode)="addTask($event)" (nodeOpen)="openGraphTask($event)" (connect)="newEdge($event)" (edgeOpen)="editEdge($event)" (positionChange)="moveGraphNode($event)" (arrange)="arrangeGraph()" />
                 <div class="graph-quick-links"><button type="button" class="secondary" (click)="newEdge()" [disabled]="!tasks.length">+ Collegamento</button>@for(t of tasks; track t) { <button type="button" class="text-button" (click)="openGraphTask(t.code)">Modifica {{ t.code }}</button> }</div>
-                </div><aside class="graph-inspector" [hidden]="!graphTask && !edgeDraft">
+                </div><aside class="graph-inspector" [hidden]="!graphTask && !edgeDraft && !(validationSelected && requiresValidation)">
+                @if(validationSelected && requiresValidation) {
+                  <section><h3>VALIDAZIONE FINALE</h3><p>Attività eseguita dal ruolo <strong>VALIDATORE</strong> dopo il completamento dei rami raggiunti.</p><p>Esiti: Validata, Validata con rilievi, Non validata. L’esecuzione registra autore, data, nota ed evidenze.</p><p>L’esito negativo richiede correzione e nuova validazione. La chiusura resta al supervisore.</p><button type="button" class="text-button" (click)="validationSelected=false">Chiudi dettagli</button></section>
+                }
                 @for(t of (graphTask ? [graphTask] : []); track t) {
                   <div class="workspace-toolbar"><h3>Modifica {{ t.code }}</h3><button type="button" class="text-button" (click)="graphTask=null" aria-label="Chiudi pannello attività">×</button></div>
                   <label>Codice attività<input name="graph-code" [ngModel]="t.code" (change)="renameTask(t,$any($event.target).value)" required></label>

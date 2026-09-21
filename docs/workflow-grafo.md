@@ -152,7 +152,7 @@ INIZIO si collega a tutte le attività iniziali; il flag Richiede validazione
 finale aggiunge VALIDAZIONE FINALE tra le uscite terminali e FINE.
 Il flag è propagato sia dal designer sia dalla pratica istanziata.
 
-Sono metanodi di rappresentazione: non diventano task persistiti e non modificano
+Solo INIZIO e FINE sono simboli di rappresentazione. VALIDAZIONE FINALE rappresenta la vera attività del validatore, già persistita tramite esiti VALIDATION, autore, data, evidenze e stato della pratica. Non si duplica tale attività nei task operatore e non si modificano
 transizioni, assegnazioni o regole del motore. Le uscite salvate verso @END vengono
 disegnate verso la validazione quando richiesta. Modificando una di queste
 frecce si continua a modificare la transizione originale verso @END.
@@ -171,3 +171,8 @@ senza ricreare il form né perdere la bozza. In modalità normale il dialog è
 ridimensionabile dall'angolo; Espandi resta disponibile anche nei browser che
 non mostrano la maniglia di ridimensionamento. La modalità espansa compatta
 intestazioni e istruzioni e aumenta l'altezza del grafo.
+
+Il nodo VALIDAZIONE FINALE è apribile: nel designer descrive ruolo ed esiti;
+nella pratica apre la sezione di validazione con stato e risultati reali.
+Il validatore usa il modulo esistente, con autorizzazioni e separazione dei compiti
+controllate dal backend. La selezione non esegue né approva automaticamente nulla.
