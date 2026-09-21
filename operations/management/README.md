@@ -20,3 +20,27 @@ e autorizzazioni. La pubblicazione non modifica servizio né accessi di rete.
 
 Le varianti management-new.py e copie *.before-* restano sul server;
 il riferimento versionato è il file effettivamente usato da systemd.
+
+## PostgreSQL WMS TEST
+
+La sezione PostgreSQL mostra stato container e disponibilità delle connessioni,
+versione, dimensione database, tempo dall'avvio, connessioni totali e attive,
+limite connessioni, clienti, pratiche, voci Repertorio, transazioni, rollback,
+deadlock e tabelle più grandi. Le righe delle tabelle sono stime; i conteggi
+applicativi sono esatti. Le statistiche cumulative riportano la data di reset.
+Aggiornamento ogni 15 secondi, con comando manuale.
+
+GET /api/postgres legge solo il database wms_test nel container
+asc-wms-test-postgres. Un database fermo o una misura non disponibile non viene
+mostrato come un valore zero e le vecchie misure vengono rimosse dalla pagina.
+
+POST /api/postgres/restart opera solo sul PostgreSQL WMS TEST. Il pulsante chiede
+conferma; arresta WMS TEST se in esecuzione, riavvia PostgreSQL, attende pg_isready
+e riparte con WMS TEST per ristabilire la connessione persistente.
+Un WMS TEST già fermo resta fermo; richieste di riavvio concorrenti sono rifiutate.
+Il PostgreSQL di n8n non è coinvolto. Il controllo Riavvia tutte resta limitato
+alle applicazioni WMS, non include PostgreSQL.
+
+Verifiche: 7 test automatici con riavvio simulato, API e pagina HTTP reali,
+misure lette dal PostgreSQL operativo. Nessun riavvio reale del database è stato
+eseguito per collaudare il pulsante.
