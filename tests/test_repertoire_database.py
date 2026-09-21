@@ -82,6 +82,36 @@ class RepertoireDatabaseTest(unittest.TestCase):
         self.assertEqual(client['gis_company_code'],'00123')
         self.assertEqual(client['notes'],'Nota')
 
+    def test_service_contract_dates_round_trip_and_validation(self):
+        self.config.save('clients', {'id':'C', 'repertoire_signed_on':'2026-01-01', 'repertoire_valid_until':'2026-12-31', 'repertoire':['LIPE_TRIM']})
+        reloaded = AdminConfigStore(self.path/'config.json', database=self.db)
+        client = reloaded.list('clients')[0]
+        self.assertEqual(client['repertoire_signed_on'], '2026-01-01')
+        self.assertEqual(client['repertoire_valid_until'], '2026-12-31')
+        before = self.config.snapshot()
+        for dates in [
+            {'repertoire_signed_on':'2026-02-30'},
+            {'repertoire_signed_on':'20260101'},
+            {'repertoire_valid_until':'2025-12-31'},
+            {'repertoire_signed_on':'', 'repertoire_valid_until':'2026-12-31'},
+            {'repertoire_signed_on':123}
+        ]:
+            with self.assertRaises(ValueError): self.config.save('clients', {'id':'C', **dates})
+            self.assertEqual(self.config.snapshot(), before)
+        self.config.save('clients', {'id':'C', 'repertoire_valid_until':''})
+        self.assertEqual(AdminConfigStore(self.path/'config.json', database=self.db).list('clients')[0]['repertoire_valid_until'], '')
+        self.assertEqual(self.config.authentication_data(), reloaded.authentication_data())
+
+    def test_billing_frequency_round_trip_and_validation(self):
+        for frequency in ('MENSILE', 'BIMESTRALE', 'TRIMESTRALE', 'QUADRIMESTRALE', 'SEMESTRALE', 'ANNUALE', ''):
+            self.config.save('clients', {'id':'C', 'repertoire_billing_frequency':frequency})
+            reloaded = AdminConfigStore(self.path/'config.json', database=self.db)
+            self.assertEqual(reloaded.list('clients')[0]['repertoire_billing_frequency'], frequency)
+        before = self.config.snapshot()
+        with self.assertRaises(ValueError):
+            self.config.save('clients', {'id':'C', 'repertoire_billing_frequency':'SETTIMANALE'})
+        self.assertEqual(before, self.config.snapshot())
+
     def test_database_failure_rolls_back_memory_and_sql(self):
         before = self.config.snapshot()
         with patch.object(self.db, 'save_config', side_effect=OSError('disk full')):

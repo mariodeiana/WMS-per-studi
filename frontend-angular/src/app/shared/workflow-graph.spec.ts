@@ -11,9 +11,26 @@ describe('Workflow graph interaction',()=>{
     const headers=fixture.nativeElement.querySelectorAll('.graph-node header');
     expect(headers[0].style.backgroundColor).toBe('rgb(196, 237, 206)');
     expect(headers[0].textContent).toContain('Contabili');
-    expect(headers[2].style.backgroundColor).toBe('');
+    expect(fixture.nativeElement.querySelector('.graph-end').textContent).toContain('FINE');
     const legend=fixture.nativeElement.querySelectorAll('.graph-group-legend .group-color-chip');
     expect(legend.length).toBe(1);expect(legend[0].style.backgroundColor).toBe(headers[0].style.backgroundColor);
+  });
+  it('automatically toggles validation and protects generated nodes and edges',()=>{
+    const fixture=TestBed.createComponent(WorkflowGraph),graph=fixture.componentInstance;
+    fixture.componentRef.setInput('design',true);
+    fixture.componentRef.setInput('tasks',[{code:'A',title:'A',is_initial:true,graph_position:{x:0,y:0},transitions:{}}]);
+    fixture.componentRef.setInput('requiresValidation',true);fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.graph-start').textContent).toContain('INIZIO');
+    expect(fixture.nativeElement.textContent).toContain('VALIDAZIONE FINALE');
+    expect(graph.nodes().find(n=>n.code==='@START')!.position.x).toBeLessThan(0);
+    const open=jasmine.createSpy(),edge=jasmine.createSpy();graph.nodeOpen.subscribe(open);graph.edgeOpen.subscribe(edge);
+    graph.open('@START');graph.open('@VALIDATION');
+    graph.editEdge(graph.edges().find(e=>e.from==='@START')!);
+    expect(open).not.toHaveBeenCalled();expect(edge).not.toHaveBeenCalled();
+    graph.editEdge(graph.edges().find(e=>e.from==='A')!);
+    expect(edge.calls.mostRecent().args[0].to).toBe('@END');
+    fixture.componentRef.setInput('requiresValidation',false);fixture.detectChanges();
+    expect(graph.nodes().some(n=>n.code==='@VALIDATION')).toBeFalse();
   });
   it('renders one labelled port per outcome and shares it between parallel edges',()=>{
     const fixture=TestBed.createComponent(WorkflowGraph), graph=fixture.componentInstance;
@@ -47,6 +64,13 @@ describe('Workflow graph interaction',()=>{
     graph.connect.subscribe(event=>{received=event;inZone=NgZone.isInAngularZone();});
     TestBed.inject(NgZone).runOutsideAngular(()=>graph.create(new FCreateConnectionEvent(graph.outputPort('A 1','OK'),'in:B',{x:0,y:0})));
     expect(received).toEqual({from:'A 1',to:'B',outcome:'OK'});expect(inZone).toBeTrue();
+  });
+  it('opens task editors inside Angular after repeated external pointer callbacks',()=>{
+    const fixture=TestBed.createComponent(WorkflowGraph),graph=fixture.componentInstance;
+    const received:string[]=[];let inside=true;
+    graph.nodeOpen.subscribe(code=>{received.push(code);inside=inside && NgZone.isInAngularZone();});
+    TestBed.inject(NgZone).runOutsideAngular(()=>{graph.open('A');graph.open('B');graph.open('A');});
+    expect(received).toEqual(['A','B','A']);expect(inside).toBeTrue();
   });
   it('never changes nodes or creates edges from a practice view or a busy editor',()=>{
     const fixture=TestBed.createComponent(WorkflowGraph), graph=fixture.componentInstance;

@@ -144,3 +144,30 @@ amministratore in un’altra scheda. Il browser avverte prima di lasciare la pag
 con modifiche non ancora salvate. Non si può garantire il recupero di modifiche
 mai ricevute dal server se la pagina viene comunque chiusa. Non si usa memoria
 persistente locale del browser per conservare le bozze.
+
+## Metanodi automatici e apertura dell'editor — 22 settembre 2026
+
+Il grafo rappresenta INIZIO con un ovale verde e FINE con un ovale rosso.
+INIZIO si collega a tutte le attività iniziali; il flag Richiede validazione
+finale aggiunge VALIDAZIONE FINALE tra le uscite terminali e FINE.
+Il flag è propagato sia dal designer sia dalla pratica istanziata.
+
+Sono metanodi di rappresentazione: non diventano task persistiti e non modificano
+transizioni, assegnazioni o regole del motore. Le uscite salvate verso @END vengono
+disegnate verso la validazione quando richiesta. Modificando una di queste
+frecce si continua a modificare la transizione originale verso @END.
+I collegamenti automatici di INIZIO e VALIDAZIONE non sono modificabili.
+La chiusura di un solo ramo non segna FINE come completata.
+
+Le attività restano apribili anche quando esiste un collegamento non ancora
+confermato: il pannello mostra l'attività senza eliminare la bozza del collegamento.
+Il clic sul pulsante attività è separato dal trascinamento, avviabile dal titolo,
+e l'apertura viene riportata nel contesto di aggiornamento dell'interfaccia.
+
+Collaudo: 53 test Angular e 94 backend superati sul server.
+
+L'editor offre Espandi/Ripristina per occupare tutta la finestra del browser,
+senza ricreare il form né perdere la bozza. In modalità normale il dialog è
+ridimensionabile dall'angolo; Espandi resta disponibile anche nei browser che
+non mostrano la maniglia di ridimensionamento. La modalità espansa compatta
+intestazioni e istruzioni e aumenta l'altezza del grafo.

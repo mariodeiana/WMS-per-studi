@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, ElementRef, NgZone, inject, computed, signal, input, output, viewChild } from '@angular/core';
 import { FFlowModule, FFlowComponent, FCanvasComponent, FZoomDirective, FCreateConnectionEvent, FSelectionChangeEvent } from '@foblex/flow';
 import { AuditEvent, Result } from '../core/models';
-import { GraphTask, GraphEdge, GraphNode, Point, graphEdges, graphNodes, graphIssues, graphNodeKinds, graphKindBackground, graphNodeSummary } from './workflow-graph-model';
+import { GraphTask, GraphEdge, GraphNode, Point, workflowEdges, graphNodes, graphIssues, graphNodeKinds, graphKindBackground, graphNodeSummary } from './workflow-graph-model';
 
 @Component({selector:'wms-workflow-graph',imports:[FFlowModule],templateUrl:'./workflow-graph.html',changeDetection:ChangeDetectionStrategy.OnPush})
 export class WorkflowGraph {
   private zone=inject(NgZone);
+  requiresValidation=input(false);
   tasks=input<GraphTask[]>([]); design=input(false); disabled=input(false);
   results=input<Result[]>([]); audit=input<AuditEvent[]>([]); practiceStatus=input('');
   newNode=output<Point>();
@@ -16,10 +17,20 @@ export class WorkflowGraph {
   initialNodes=computed(()=>this.nodes().filter(n=>n.code!=='@END' && n.initial));
   issues=computed(()=>this.design() ? graphIssues(this.tasks()) : []);
   orphan(code:string) { return this.issues().some(i=>i.code===code); }
-  edges=computed(()=>graphEdges(this.tasks(),this.results(),this.audit()));
+  edges=computed(()=>workflowEdges(this.tasks(),this.results(),this.audit(),this.requiresValidation(),this.practiceStatus()));
   private endPosition=signal<Point|null>(null);
-  nodes=computed(()=>graphNodes(this.tasks(),this.edges(),this.design(),this.practiceStatus()).map(node=>
-    node.code==='@END' && this.endPosition() ? {...node,position:this.endPosition()!} : node));
+  nodes=computed(()=>{
+    const nodes=graphNodes(this.tasks(),this.edges(),this.design(),this.practiceStatus());
+    const tasks=nodes.filter(n=>!this.isMeta(n.code));
+    if(!tasks.length) return nodes;
+    const left=Math.min(...tasks.map(n=>n.position.x)),right=Math.max(...tasks.map(n=>n.position.x));
+    return nodes.map(node=>{
+      if(node.code==='@START') return {...node,position:{x:left-360,y:40}};
+      if(node.code==='@VALIDATION') return {...node,position:{x:right+360,y:40}};
+      if(node.code==='@END') return {...node,position:this.endPosition() || {x:right+(this.requiresValidation()?720:360),y:40}};
+      return node;
+    });
+  });
   responsibleGroups=computed(()=>{
     const groups=new Map<string,{id:string;name:string;color:string}>();
     for(const task of this.tasks()) if(task.assigned_group) groups.set(task.assigned_group,{id:task.assigned_group,name:task.assigned_group_name || task.assigned_group,color:task.assigned_group_color || '#edf1f5'});
@@ -27,8 +38,17 @@ export class WorkflowGraph {
   });
   nodeGroup(node:GraphNode) { const task=this.tasks().find(t=>t.code===node.code);return this.responsibleGroups().find(g=>g.id===task?.assigned_group); }
   nodeKinds(node:GraphNode) { return graphNodeKinds(node,this.edges()); }
-  nodeSummary(node:GraphNode) { return graphNodeSummary(this.tasks().find(t=>t.code===node.code),this.nodeKinds(node)); }
-  nodeBackground(node:GraphNode) { return graphKindBackground(this.nodeKinds(node)); }
+  isMeta(code:string) {return ['@START','@END','@VALIDATION'].includes(code);}
+  editEdge(edge:GraphEdge) {
+    if(!this.design() || this.disabled() || edge.automatic) return;
+    this.edgeOpen.emit({...edge,to:edge.originalTo || edge.to});
+  }
+  nodeSummary(node:GraphNode) {
+    if(node.code==='@START') return 'INIZIO · Avvia tutte le attività contrassegnate come iniziali.';
+    if(node.code==='@END') return 'FINE · La pratica termina dopo il completamento dei rami, l’eventuale validazione e la chiusura.';
+    if(node.code==='@VALIDATION') return 'VALIDAZIONE FINALE · Fase prevista dal tipo pratica, dopo il completamento di tutti i rami raggiunti.';
+    return graphNodeSummary(this.tasks().find(t=>t.code===node.code),this.nodeKinds(node)); }
+  nodeBackground(node:GraphNode) { if(node.code==='@START') return '#dcfce7'; if(node.code==='@END') return '#fee2e2'; if(node.code==='@VALIDATION') return '#fef3c7'; return graphKindBackground(this.nodeKinds(node)); }
   arrangeNodes() { this.endPosition.set(null); this.arrange.emit(); }
   readonly zoomGesture=(event:{ctrlKey?:boolean;metaKey?:boolean})=>!!(event.ctrlKey || event.metaKey);
   private fitted=false;
@@ -51,18 +71,19 @@ export class WorkflowGraph {
     if(!this.design() || this.disabled() || !event.targetId) return;
     const to=decodeURIComponent(event.targetId.slice(3));
     const [from,outcome]=JSON.parse(decodeURIComponent(event.sourceId.slice(4))) as [string,string];
-    this.zone.run(()=>this.connect.emit({from,to,outcome}));
+    if(this.isMeta(from) || to==='@START') return;
+    this.zone.run(()=>this.connect.emit({from,to:to==='@VALIDATION'?'@END':to,outcome}));
   }
   select(event:FSelectionChangeEvent) {
     const edge=this.edges().find(e=>e.id===event.connectionIds[0]);
-    if(edge && this.design() && !this.disabled()) this.zone.run(()=>this.edgeOpen.emit(edge));
+    if(edge && this.design() && !this.disabled()) this.zone.run(()=>this.editEdge(edge));
   }
   moved(code:string, position:Point) {
     if(!this.design() || this.disabled()) return;
     this.zone.run(()=>{
       if(code==='@END') this.endPosition.set({...position});
-      else this.positionChange.emit({code,position});
+      else if(!this.isMeta(code)) this.positionChange.emit({code,position});
     });
   }
-  open(code:string) { if(code!=='@END' && !this.disabled()) this.nodeOpen.emit(code); }
+  open(code:string) { if(!this.isMeta(code) && !this.disabled()) this.zone.run(()=>this.nodeOpen.emit(code)); }
 }

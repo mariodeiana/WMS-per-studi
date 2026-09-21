@@ -65,6 +65,7 @@ export class Admin implements OnInit, OnDestroy {
   editorDialog = viewChild<ElementRef<HTMLDialogElement>>('editorDialog');
   practiceDialog = viewChild<ElementRef<HTMLDialogElement>>('practiceDialog');
   edgeDraft: {from:string;to:string;outcome:string} | null = null; originalEdge: GraphEdge | null = null; edgeError='';
+  editorExpanded = false;
   clientTab = 'general'; repertoire: string[] = [];
   clientTabs = [{key:'general',label:'Anagrafica'},{key:'fiscal',label:'Dati fiscali'},{key:'repertoire',label:'REPERTORIO'},{key:'practices',label:'Pratiche'}];
   clientPractices() { return this.practices().filter(p=>p['client_id']===this.original?.id); }
@@ -146,6 +147,11 @@ export class Admin implements OnInit, OnDestroy {
     this.modelTab='general'; this.expandedTask=null; this.edgeDraft=null; this.originalEdge=null;
     this.original = row; this.draft = {}; this.formError.set('');
     for (const field of this.current().fields) this.draft[field.key] = String(row?.[field.key] ?? '');
+    if (this.entity === 'clients') {
+      this.draft['repertoire_billing_frequency']=String(row?.['repertoire_billing_frequency'] || '');
+      this.draft['repertoire_signed_on']=String(row?.['repertoire_signed_on'] || '');
+      this.draft['repertoire_valid_until']=String(row?.['repertoire_valid_until'] || '');
+    }
     if (this.entity === 'groups' && !row) this.draft['role'] = 'OPERATORE';
     this.active = row?.active !== false; this.requiresValidation = row?.['requires_validation'] !== false;
     this.tasks = structuredClone((row?.['tasks'] || []) as TaskSpec[]).map(t => ({...t, choices:[...new Set([...(t.outcomes || []), ...Object.keys(t.transitions || {})])].map(name => ({name,destinations:[...(t.transitions?.[name] || [])]}))}));
@@ -171,7 +177,7 @@ export class Admin implements OnInit, OnDestroy {
     if(signature!==this.graphSignature) { this.graphSignature=signature; this.graphSnapshot=structuredClone(nodes); }
     return this.graphSnapshot;
   }
-  openGraphTask(code:string) { if(this.edgeDraft) {this.edgeError='Applica o annulla prima il collegamento in modifica.';return;} this.graphTask=this.tasks.find(t=>t.code===code)||null;this.edgeDraft=null;this.originalEdge=null; }
+  openGraphTask(code:string) { this.graphTask=this.tasks.find(t=>t.code===code)||null; }
   moveGraphNode(change:{code:string;position:Point}) {
     if(this.busy()) return;
     const task=this.tasks.find(t=>t.code===change.code); if(task) task.graph_position={...change.position};
@@ -237,6 +243,10 @@ export class Admin implements OnInit, OnDestroy {
   async save() {
     if(this.busy()) return;
     if(this.edgeDraft) { this.formError.set('Applica o annulla prima il collegamento in modifica.'); return; }
+    if(this.entity==='clients') {
+      const start=String(this.draft['repertoire_signed_on'] || ''), end=String(this.draft['repertoire_valid_until'] || '');
+      if(end && (!start || end<start)) {this.formError.set('Inserire una data stipula e una fine validità non precedente.');return;}
+    }
     if(!await this.persistDraft()) {this.formError.set('Prima di pubblicare occorre salvare la bozza sul server.');return;}
     this.busy.set(true); this.formError.set('');
     try {

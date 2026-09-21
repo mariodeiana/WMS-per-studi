@@ -6,7 +6,7 @@ export interface GraphTask {
   instructions?: string; assigned_group?: string; assigned_group_name?: string; assigned_group_color?: string; days_before_due?: number; due_date?: string;
   is_initial?: boolean; outcomes?: string[]; graph_position?: Point | null; active?: boolean; status?: string;
 }
-export interface GraphEdge { id: string; from: string; outcome: string; to: string; implicit: boolean; traversed: boolean; }
+export interface GraphEdge { id: string; from: string; outcome: string; to: string; implicit: boolean; traversed: boolean; automatic?: boolean; originalTo?: string; }
 export interface GraphNode { code: string; title: string; position: Point; state: string; label: string; initial: boolean; outcomes: string[]; }
 
 export function graphIssues(tasks: GraphTask[]): {code:string;message:string}[] {
@@ -48,9 +48,26 @@ export function graphEdges(tasks: GraphTask[], results: Result[] = [], audit: Au
   });
 }
 
+// Presentation-only milestones: never persisted as tasks or workflow transitions.
+export function workflowEdges(tasks: GraphTask[], results: Result[] = [], audit: AuditEvent[] = [], validation = false, status = ''): GraphEdge[] {
+  if (!tasks.length) return [];
+  const edges = graphEdges(tasks, results, audit).map(edge =>
+    validation && edge.to === '@END' ? {...edge, to:'@VALIDATION', originalTo:'@END'} : edge);
+  const starts = tasks.filter(t=>t.is_initial ?? !tasks.some(s=>Object.values(s.transitions || {}).flat().includes(t.code)));
+  for (const task of starts) edges.push({
+    id:JSON.stringify(['@START','*',task.code]), from:'@START',to:task.code,outcome:'*',
+    implicit:false,traversed:task.active===true,automatic:true
+  });
+  if (validation) edges.push({
+    id:'@VALIDATION-END',from:'@VALIDATION',to:'@END',outcome:'*',
+    implicit:false,traversed:['VALIDATA','CHIUSA'].includes(status),automatic:true
+  });
+  return edges;
+}
+
 // Deterministic layered layout; stored positions override it without changing edges.
 export function graphNodes(tasks: GraphTask[], edges: GraphEdge[], design: boolean, practiceStatus = ''): GraphNode[] {
-  const codes = [...tasks.map(t=>t.code), ...(tasks.length ? ['@END'] : [])];
+  const codes = [...tasks.map(t=>t.code), ...(tasks.length ? ['@END'] : []), ...(['@START','@VALIDATION'].filter(c=>edges.some(e=>e.from===c || e.to===c)))];
   const ranks = new Map(codes.map(c=>[c,0]));
   const incoming = new Map(codes.map(c=>[c,new Set(edges.filter(e=>e.to===c).map(e=>e.from))]));
   const queue = codes.filter(c=>!incoming.get(c)?.size);
@@ -66,7 +83,7 @@ export function graphNodes(tasks: GraphTask[], edges: GraphEdge[], design: boole
   const rows = new Map<number,number>();
   return codes.map(code=>{
     const t=tasks.find(t=>t.code===code), rank=ranks.get(code)||0, row=rows.get(rank)||0;
-    const outcomes=t ? graphOutcomes(t) : [];
+    const outcomes=t ? graphOutcomes(t) : code==='@END' ? [] : ['*'];
     rows.set(rank,row+Math.max(170,120+outcomes.length*34));
     const initial=t?.is_initial ?? !edges.some(e=>e.to===code);
     const state=design?'design':code==='@END' ? (edges.some(e=>e.to===code&&e.traversed)?'done':'unreached')
@@ -74,7 +91,9 @@ export function graphNodes(tasks: GraphTask[], edges: GraphEdge[], design: boole
       : ['DA_FARE','IN_LAVORAZIONE'].includes(practiceStatus)?'active':'paused';
     const label=design?(code==='@END'?'Fine ramo':initial?'Iniziale':'Attività'):
       ({design:'Attività',done:'Completata',active:'Attiva',unreached:'Non raggiunta',paused:'Sospesa'}[state]||'');
-    return {code,title:t?.title || 'Fine ramo',position:t?.graph_position || {x:40+rank*360,y:40+row},state,label,initial,outcomes};
+    const meta = code==='@START' || code==='@END' || code==='@VALIDATION';
+    const metaState = design ? 'design' : code==='@START' ? 'done' : code==='@END' ? (practiceStatus==='CHIUSA'?'done':'unreached') : ['VALIDATA','CHIUSA'].includes(practiceStatus)?'done':practiceStatus==='DA_VALIDARE'?'active':practiceStatus==='NON_VALIDATA'?'paused':'unreached';
+    return {code,title:t?.title || (code==='@START'?'INIZIO':code==='@VALIDATION'?'VALIDAZIONE FINALE':'FINE'),position:t?.graph_position || {x:40+rank*360,y:40+row},state:meta?metaState:state,label,initial:!!t && initial,outcomes};
   });
 }
 

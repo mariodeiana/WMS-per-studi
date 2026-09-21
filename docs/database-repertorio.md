@@ -65,3 +65,19 @@ Il ritorno immediato precedente alla migrazione usa il container fermato conserv
 come asc-wms-test-before-postgres-*; non recupera le modifiche effettuate dopo il passaggio.
 
 Collaudo: 92 test backend, 46 test Angular e 7 test specifici PostgreSQL sul server.
+
+## Contratto di servizi del cliente
+
+La tab REPERTORIO raggruppa i dati del contratto di servizi e i tipi pratica inclusi.
+Una sola coppia di date per cliente: repertoire_signed_on (Data stipula) e
+repertoire_valid_until (Data fine validità). Non sono date delle singole voci.
+La fine può essere vuota; se presente richiede la stipula e non può precederla.
+repertoire_billing_frequency ammette MENSILE, BIMESTRALE, TRIMESTRALE,
+QUADRIMESTRALE, SEMESTRALE, ANNUALE oppure vuoto/non specificato.
+La frequenza è un dato contrattuale, non attiva un motore di fatturazione.
+
+Migrazione 002: aggiunge tre colonne nullable a clients, preservando dati,
+identità e inclusioni esistenti. Non inventa date o frequenze per lo storico.
+Le date documentano il contratto; non è introdotta una nuova regola di esclusione
+basata sulla data di creazione della pratica. L'interpretazione operativa per
+adempimenti riferiti a periodi contrattuali resta da definire.

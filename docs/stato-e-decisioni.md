@@ -73,3 +73,17 @@ di tab e campi. La conferma visiva finale in Safari resta da effettuare.
 - Verificare l'accesso GIS prima di progettare connettori.
 - Pianificare separatamente eventuali migrazioni DEV/PROD.
 - Risolvere la sincronizzazione dello stato prima di introdurre più worker.
+
+## Aggiornamento TEST del 22 settembre
+
+Distribuita l'immagine asc-wms:test-graph-contract-20260922: dati comuni del
+contratto (stipula, fine validità e frequenza fatturazione), metanodi automatici,
+correzione dell'apertura dei nodi con collegamento in bozza, Espandi/Ripristina
+e ridimensionamento del dialog. La copertura per competenza resta un quesito
+aperto in ABBI-DUBBI.md, senza nuova esclusione temporale automatica.
+
+Backup completo SQL e file:
+/opt/asc/wms/backups/graph-contract-20260922T011245.
+Verificata identità dei contenuti di utenti, gruppi, appartenenze, pratiche e
+inclusioni nel Repertorio prima/dopo. Migrazioni 1 e 2 applicate.
+Collaudo: 94 test backend, 53 Angular, 9 PostgreSQL; health e runtime TEST validi.

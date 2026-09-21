@@ -10,7 +10,7 @@
       <button type="button" role="tab" id="practice-dossier-tab" aria-controls="practice-dossier" [attr.aria-selected]="practiceView==='dossier'" [tabIndex]="practiceView==='dossier'?0:-1" (click)="practiceView='dossier'" (keydown)="practiceKey($event)">Fascicolo</button>
       <button type="button" role="tab" id="practice-graph-tab" aria-controls="practice-graph" [attr.aria-selected]="practiceView==='graph'" [tabIndex]="practiceView==='graph'?0:-1" (click)="practiceView='graph'" (keydown)="practiceKey($event)">Grafo</button>
     </div>
-    @if(practiceView==='graph') { <section id="practice-graph" role="tabpanel" aria-labelledby="practice-graph-tab"><wms-workflow-graph [tasks]="p.tasks" [results]="p.results" [audit]="p.audit" [practiceStatus]="p.status" (nodeOpen)="openGraphTask($event)" /></section> }
+    @if(practiceView==='graph') { <section id="practice-graph" role="tabpanel" aria-labelledby="practice-graph-tab"><wms-workflow-graph [tasks]="p.tasks" [requiresValidation]="p.requires_validation" [results]="p.results" [audit]="p.audit" [practiceStatus]="p.status" (nodeOpen)="openGraphTask($event)" /></section> }
   }
   <div id="practice-dossier" [attr.role]="taskCode ? null : 'tabpanel'" [attr.aria-labelledby]="taskCode ? null : 'practice-dossier-tab'" [hidden]="!taskCode && practiceView!=='dossier'">
   @if(!taskCode) {

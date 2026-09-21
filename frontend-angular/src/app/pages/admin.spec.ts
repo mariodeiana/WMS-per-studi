@@ -21,6 +21,10 @@ describe('Practice model editor',()=>{
     fixture.detectChanges(); tick(); fixture.detectChanges(); tick(); fixture.detectChanges();
     const dialog = fixture.nativeElement.querySelector('dialog');
     if (!dialog.open) dialog.showModal();
+    page.editorExpanded=true;fixture.detectChanges();
+    expect(dialog.classList.contains('editor-expanded')).toBeTrue();
+    page.editorExpanded=false;fixture.detectChanges();
+    expect(dialog.classList.contains('editor-expanded')).toBeFalse();
     const bounds = dialog.getBoundingClientRect();
     const tabs = dialog.querySelector('[aria-label="Scheda cliente"]').getBoundingClientRect();
     const name = dialog.querySelectorAll('#client-general input')[1].getBoundingClientRect();
@@ -48,6 +52,15 @@ describe('Graph designer',()=>{
     TestBed.configureTestingModule({providers:[provideRouter([]),{provide:Api,useValue:api}]});
     page=TestBed.runInInjectionContext(()=>new Admin()); page.entity='practice_types';
     page.open({id:'G',tasks:['A','B','C'].map(code=>({code,title:code,outcomes:[],transitions:{}}))});
+  });
+  it('opens a task even with a pending edge, preserving the unfinished connection',()=>{
+    page.newEdge({from:'A',to:'B',outcome:'OK'});
+    const draft=page.edgeDraft;
+    page.openGraphTask('C');
+    expect(page.graphTask?.code).toBe('C');
+    expect(page.edgeDraft).toBe(draft);
+    page.openGraphTask('A');expect(page.graphTask?.code).toBe('A');
+    expect(page.tasks[0].choices).toEqual([]);
   });
   it('adds parallel branches without replacing existing destinations',()=>{
     page.newEdge({from:'A',to:'B',outcome:'OK'}); expect(page.edgeDraft!.outcome).toBe('OK'); page.saveEdge();
@@ -129,6 +142,16 @@ describe('Client repertoire editor',()=>{
     expect(body['repertoire']).toEqual(['LIPE','IVA']);expect(body['gis_company_code']).toBe('00123');
     expect(client.repertoire).toEqual(['LIPE']);expect(page.editor()).toBeTrue();
     page.open(client);expect(page.repertoire).toEqual(['LIPE']);
+  });
+  it('saves service contract dates and billing frequency with the repertoire',async()=>{
+    page.open({id:'C',name:'Cliente',repertoire:['LIPE'],repertoire_signed_on:'2026-01-01',repertoire_valid_until:'2026-12-31',repertoire_billing_frequency:'QUADRIMESTRALE'});
+    api.post.and.rejectWith(new Error('Keep editor open'));await page.save();
+    const body=api.post.calls.mostRecent().args[1] as Record<string,unknown>;
+    expect(body['repertoire_signed_on']).toBe('2026-01-01');
+    expect(body['repertoire_valid_until']).toBe('2026-12-31');
+    expect(body['repertoire_billing_frequency']).toBe('QUADRIMESTRALE');
+    page.draft['repertoire_valid_until']='2025-12-31';api.post.calls.reset();await page.save();
+    expect(api.post).not.toHaveBeenCalled();expect(page.formError()).toContain('fine validità');
   });
   it('shows only practices for the selected client and does not infer history',()=>{
     page.practices.set([{id:'P',client_id:'C',economic_regime:'IN_REPERTORIO'},{id:'Q',client_id:'OTHER'}]);

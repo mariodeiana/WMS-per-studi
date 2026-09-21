@@ -18,9 +18,9 @@
     }
   </div>
 </section>
-<dialog #editorDialog class="workspace-dialog" [class.model-dialog]="entity === 'practice_types'" [class.client-dialog]="entity === 'clients'" aria-labelledby="editor-title" (cancel)="cancelEditor($event)">
+<dialog #editorDialog class="workspace-dialog" [class.editor-expanded]="editorExpanded" [class.model-dialog]="entity === 'practice_types'" [class.client-dialog]="entity === 'clients'" aria-labelledby="editor-title" (cancel)="cancelEditor($event)">
   @if (editor()) {
-    <header class="dialog-heading"><div><p class="eyebrow">{{ current().title }}</p><h2 id="editor-title">{{ original ? 'Modifica · '+label(original) : entity === 'practices' ? 'Nuova pratica' : 'Nuovo elemento' }}</h2></div><button class="icon-button secondary" type="button" aria-label="Chiudi finestra" (click)="closeEditor()" [disabled]="busy()">×</button></header>
+    <header class="dialog-heading"><div><p class="eyebrow">{{ current().title }}</p><h2 id="editor-title">{{ original ? 'Modifica · '+label(original) : entity === 'practices' ? 'Nuova pratica' : 'Nuovo elemento' }}</h2></div><button class="secondary editor-expand-button" type="button" [attr.aria-pressed]="editorExpanded" (click)="editorExpanded=!editorExpanded">{{editorExpanded ? 'Ripristina' : 'Espandi'}}</button><button class="icon-button secondary" type="button" aria-label="Chiudi finestra" (click)="closeEditor()" [disabled]="busy()">×</button></header>
     <form #editorForm="ngForm" (ngSubmit)="editorForm.valid && save()">
       @if (entity === 'practice_types') {
         <div class="workspace-tabs model-tabs" role="tablist" aria-label="Modello di pratica">
@@ -68,6 +68,13 @@
               </section>
             }
             <section id="client-repertoire" role="tabpanel" aria-labelledby="client-tab-repertoire" [hidden]="clientTab!=='repertoire'">
+              <h3>Contratto di servizi</h3>
+              <div class="fields">
+                <label>Frequenza fatturazione<select name="repertoire_billing_frequency" [(ngModel)]="draft['repertoire_billing_frequency']"><option value="">Non specificata</option><option value="MENSILE">Mensile</option><option value="BIMESTRALE">Bimestrale</option><option value="TRIMESTRALE">Trimestrale</option><option value="QUADRIMESTRALE">Quadrimestrale</option><option value="SEMESTRALE">Semestrale</option><option value="ANNUALE">Annuale</option></select></label>
+                <label>Data stipula<input type="date" name="repertoire_signed_on" [(ngModel)]="draft['repertoire_signed_on']"></label>
+                <label>Data fine validità<input type="date" name="repertoire_valid_until" [(ngModel)]="draft['repertoire_valid_until']" [min]="draft['repertoire_signed_on'] || ''"></label>
+              </div>
+              <p class="editor-help">Date e frequenza fatturazione si riferiscono al contratto di servizi del cliente, che definisce gli adempimenti inclusi sotto. Fine validità vuota: senza scadenza indicata.</p>
               <h3>Tipi pratica compresi nel contratto</h3><p>La generazione automatica utilizza questo repertorio. Puoi sempre creare manualmente altri tipi pratica: saranno extra contratto. Le modifiche valgono per le nuove pratiche.</p>
               @for(model of values('practice_types'); track model.id) {
                 <label class="check"><input type="checkbox" [checked]="repertoire.includes(model.id)" (change)="toggle(repertoire,model.id,$any($event.target).checked)">{{label(model)}}{{model.active===false?' (inattivo: escluso dalla generazione)':''}}</label>
@@ -82,7 +89,7 @@
               <div class="workspace-toolbar"><strong>{{ tasks.length }} attività nel modello</strong><button type="button" class="secondary" (click)="addTask()">+ Aggiungi attività</button></div>
               <p class="editor-help">Apri un’attività per modificarla. L’ordine è visivo. Le transizioni definiscono il percorso; la casella Nodo iniziale definisce gli avvii. Più destinazioni attivano rami paralleli.</p>
               @if(modelTab === 'tasks') {
-                <div class="graph-design-layout" [class.has-inspector]="graphTask || edgeDraft"><div class="graph-design-canvas"><wms-workflow-graph [tasks]="graphTasks()" [design]="true" [disabled]="busy()" (newNode)="addTask($event)" (nodeOpen)="openGraphTask($event)" (connect)="newEdge($event)" (edgeOpen)="editEdge($event)" (positionChange)="moveGraphNode($event)" (arrange)="arrangeGraph()" />
+                <div class="graph-design-layout" [class.has-inspector]="graphTask || edgeDraft"><div class="graph-design-canvas"><wms-workflow-graph [tasks]="graphTasks()" [requiresValidation]="requiresValidation" [design]="true" [disabled]="busy()" (newNode)="addTask($event)" (nodeOpen)="openGraphTask($event)" (connect)="newEdge($event)" (edgeOpen)="editEdge($event)" (positionChange)="moveGraphNode($event)" (arrange)="arrangeGraph()" />
                 <div class="graph-quick-links"><button type="button" class="secondary" (click)="newEdge()" [disabled]="!tasks.length">+ Collegamento</button>@for(t of tasks; track t) { <button type="button" class="text-button" (click)="openGraphTask(t.code)">Modifica {{ t.code }}</button> }</div>
                 </div><aside class="graph-inspector" [hidden]="!graphTask && !edgeDraft">
                 @for(t of (graphTask ? [graphTask] : []); track t) {

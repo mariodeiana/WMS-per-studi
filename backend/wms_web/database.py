@@ -16,6 +16,7 @@ from backend.wms_core import models
 
 ENTITIES = ('users', 'groups', 'memberships', 'assignment_policies', 'practice_types', 'clients')
 CLIENT_FIELDS = ('name', 'tax_code', 'vat_number', 'gis_company_code', 'accounting_regime', 'vat_settlement_type', 'notes')
+CLIENT_REPERTOIRE_FIELDS = ('repertoire_signed_on', 'repertoire_valid_until', 'repertoire_billing_frequency')
 TYPES = {name: cls for name, cls in vars(models).items() if isinstance(cls, type) and (is_dataclass(cls) or issubclass(cls, Enum))}
 
 
@@ -89,7 +90,11 @@ class Database:
             included = {}
             for client, model in execute('SELECT client_id, practice_type_id FROM client_repertoire ORDER BY practice_type_id').fetchall():
                 included.setdefault(client, []).append(model)
-            for client in data['clients']: client['repertoire'] = included.get(client['id'], [])
+            dates = {r[0]: r[1:] for r in execute('SELECT id,repertoire_signed_on,repertoire_valid_until,repertoire_billing_frequency FROM clients').fetchall()}
+            for client in data['clients']:
+                client['repertoire'] = included.get(client['id'], [])
+                for key, value in zip(CLIENT_REPERTOIRE_FIELDS, dates[client['id']]):
+                    client[key] = str(value) if value is not None else ''
             return data
 
     def save_config(self, data):
@@ -103,8 +108,8 @@ class Database:
                 for row in data[entity]:
                     payload = json.dumps(row, ensure_ascii=False)
                     if entity == 'clients':
-                        names = ('id', *CLIENT_FIELDS, 'active', 'payload')
-                        values = (row['id'], *(row.get(k, '') for k in CLIENT_FIELDS), int(row.get('active', True)), payload)
+                        names = ('id', *CLIENT_FIELDS, *CLIENT_REPERTOIRE_FIELDS, 'active', 'payload')
+                        values = (row['id'], *(row.get(k, '') for k in CLIENT_FIELDS), *(row.get(k) or None for k in CLIENT_REPERTOIRE_FIELDS), int(row.get('active', True)), payload)
                     else:
                         names, values = ('id', 'payload'), (row['id'], payload)
                     execute(f"INSERT INTO {entity} ({','.join(names)}) VALUES ({','.join('?' for _ in names)}) ON CONFLICT (id) DO UPDATE SET " + ','.join(f'{n}=excluded.{n}' for n in names[1:]), values)

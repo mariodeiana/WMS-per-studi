@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import json
 import colorsys
 from pathlib import Path
@@ -293,6 +294,25 @@ class AdminConfigStore:
                 if not isinstance(value, str) or len(value) > (10000 if key == "notes" else 250):
                     raise ValueError(f"Campo cliente non valido: {key}")
                 item[key] = value.strip()
+            for key in ('repertoire_signed_on', 'repertoire_valid_until'):
+                value = item.get(key) or ''
+                if not isinstance(value, str):
+                    raise ValueError('Data del repertorio non valida')
+                if value:
+                    try:
+                        parsed = date.fromisoformat(value)
+                        if parsed.isoformat() != value: raise ValueError()
+                    except ValueError:
+                        raise ValueError('Inserire date del repertorio valide (AAAA-MM-GG)')
+                item[key] = value
+            if item['repertoire_valid_until'] and not item['repertoire_signed_on']:
+                raise ValueError('Inserire la data stipula prima della fine validità')
+            if item['repertoire_signed_on'] and item['repertoire_valid_until'] and item['repertoire_valid_until'] < item['repertoire_signed_on']:
+                raise ValueError('La fine validità non può precedere la data stipula')
+            frequency = item.get('repertoire_billing_frequency') or ''
+            if frequency not in ('', 'MENSILE', 'BIMESTRALE', 'TRIMESTRALE', 'QUADRIMESTRALE', 'SEMESTRALE', 'ANNUALE'):
+                raise ValueError('Frequenza fatturazione non valida')
+            item['repertoire_billing_frequency'] = frequency
             repertoire = item.get("repertoire", [])
             if not isinstance(repertoire, list) or not all(isinstance(v, str) for v in repertoire):
                 raise ValueError("Repertorio non valido")

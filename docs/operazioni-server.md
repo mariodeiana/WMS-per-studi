@@ -27,7 +27,7 @@ Non stampare o copiare i valori nei log o in GitHub.
 
 Usare un tag nuovo e aggiornare l'immagine in compose.database-test.yaml.
 Conservare tag precedente e backup. Il rilascio del 22 settembre usa
-asc-wms:test-client-dialog-20260922. Aggiornare solo il servizio richiesto:
+asc-wms:test-graph-contract-20260922. Aggiornare solo il servizio richiesto:
 
     docker compose -f compose.yaml -f compose.database-test.yaml up -d --no-build --no-deps wms-test
     curl -fsS http://127.0.0.1:8001/api/health
