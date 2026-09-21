@@ -32,7 +32,7 @@ def _task(p,code):
 def _require_role(actual,expected,message):
  if actual!=expected:raise WorkflowError(message)
 def assign_task(p,task_code,assignee,actor,actor_role):
- _require_role(actor_role,UserRole.MANAGER,"Solo un manager può assegnare i task")
+ _require_role(actor_role,UserRole.MANAGER,"Solo un supervisore può assegnare i task")
  if p.status in {PracticeStatus.VALIDATA,PracticeStatus.CHIUSA}:raise WorkflowError("I task non possono essere assegnati dopo la validazione")
  t=_task(p,task_code)
  if t.status==TaskStatus.COMPLETATO:raise WorkflowError("Un task completato deve essere riaperto prima di riassegnarlo")
@@ -45,6 +45,7 @@ def save_task_progress(p,task_code,actor,actor_role,note="",attachments=None):
  if p.status not in {PracticeStatus.DA_FARE,PracticeStatus.IN_LAVORAZIONE}:raise WorkflowError("Il task non può essere lavorato nello stato corrente")
  t=_task(p,task_code)
  if not getattr(t,"active",True):raise WorkflowError("Il task non è attivo nel percorso corrente")
+ if not task_executable(p,t):raise WorkflowError("Il task non è eseguibile")
  if t.assignee!=actor:raise WorkflowError("Il task può essere lavorato solo dall'operatore assegnatario")
  if t.status==TaskStatus.COMPLETATO:raise WorkflowError("Il task è già completato")
  if p.status==PracticeStatus.DA_FARE:start_practice(p,actor)
@@ -58,16 +59,24 @@ def complete_task(p,task_code,actor,actor_role,outcome="COMPLETATO",note="",atta
  if not getattr(t,"active",True):raise WorkflowError("Il task non è attivo nel percorso corrente")
  if t.assignee!=actor:raise WorkflowError("Il task può essere completato solo dall'operatore assegnatario")
  if t.status==TaskStatus.COMPLETATO:raise WorkflowError("Il task è già completato")
+ outcome=outcome.strip()
  allowed_outcomes=tuple(getattr(t,"outcomes",()) or ())
  if allowed_outcomes and outcome not in allowed_outcomes:
   raise WorkflowError(f"Esito non valido per {t.code}: {outcome}")
  missing=[c for c in t.depends_on if _task(p,c).status!=TaskStatus.COMPLETATO]
  if missing:raise WorkflowError(f"Dipendenze non completate: {', '.join(missing)}")
+ transitions=getattr(t,"transitions",{})
+ destinations=list(dict.fromkeys(transitions.get(outcome,transitions.get("*",()))))
+ for destination in destinations:
+  if destination!="@END":_task(p,destination)
+ previous=next((r for r in reversed(p.results) if r.action=="TASK" and r.related_task_code==t.code),None)
+ if previous and set(destinations)!=set(transitions.get(previous.outcome,transitions.get("*",()))):
+  raise WorkflowError("La correzione non può cambiare il percorso già attraversato")
  if p.status==PracticeStatus.DA_FARE:start_practice(p,actor)
  r=_record_result(p,actor=actor,actor_role=actor_role,outcome=outcome,note=note,attachments=attachments,action="TASK",task_code=t.code,existing_evidence_ids=t.progress_evidence_ids);t.status=TaskStatus.COMPLETATO;t.completed_by=actor;t.result_id=r.id;t.work_note="";t.reopen_reason="";t.progress_evidence_ids=[];p.record("TASK_COMPLETED",actor,task_code=t.code,result_id=r.id)
- destinations=list(getattr(t,"transitions",{}).get(outcome,()))
- if destinations:
+ if destinations and previous is None:
   for destination in destinations:
+   if destination=="@END":continue
    next_task=_task(p,destination)
    next_task.active=True
   p.record("TASK_TRANSITION_SELECTED",actor,task_code=t.code,outcome=outcome,destinations=destinations)
@@ -79,16 +88,16 @@ def complete_task(p,task_code,actor,actor_role,outcome="COMPLETATO",note="",atta
    p.record("NONCONFORMITY_READY_FOR_VERIFICATION",actor,nc_id=nc.id)
   _transition(p,PracticeStatus.COMPLETATA,actor);(_transition(p,PracticeStatus.DA_VALIDARE,actor) if p.requires_validation else None)
 def reopen_task(p,task_code,actor,actor_role,reason=""):
- _require_role(actor_role,UserRole.MANAGER,"Solo un manager può riaprire i task")
- if p.status not in {PracticeStatus.IN_LAVORAZIONE,PracticeStatus.DA_VALIDARE,PracticeStatus.NON_VALIDATA}:raise WorkflowError("I task possono essere riaperti solo prima della validazione")
+ _require_role(actor_role,UserRole.MANAGER,"Solo un supervisore può riaprire i task")
+ if p.status not in {PracticeStatus.IN_LAVORAZIONE,PracticeStatus.COMPLETATA,PracticeStatus.DA_VALIDARE,PracticeStatus.NON_VALIDATA}:raise WorkflowError("I task possono essere riaperti solo prima della validazione")
  reason=reason.strip()
  if not reason:raise WorkflowError("La motivazione della riapertura è obbligatoria")
  t=_task(p,task_code)
  if t.status!=TaskStatus.COMPLETATO:raise WorkflowError("Solo un task completato può essere riaperto")
  previous_by=t.completed_by;previous_result=t.result_id;t.status=TaskStatus.IN_LAVORAZIONE;t.completed_by=None;t.result_id=None;t.reopen_reason=reason;t.work_note="";t.progress_evidence_ids=[];p.record("TASK_REOPENED",actor,task_code=t.code,previous_completed_by=previous_by,previous_result_id=previous_result,reason=reason)
- if p.status in {PracticeStatus.DA_VALIDARE,PracticeStatus.NON_VALIDATA}:_transition(p,PracticeStatus.IN_LAVORAZIONE,actor)
+ if p.status in {PracticeStatus.COMPLETATA,PracticeStatus.DA_VALIDARE,PracticeStatus.NON_VALIDATA}:_transition(p,PracticeStatus.IN_LAVORAZIONE,actor)
 def define_corrective_action(p,actor,actor_role,task_codes,instruction):
- _require_role(actor_role,UserRole.MANAGER,"Solo un manager può definire una azione correttiva")
+ _require_role(actor_role,UserRole.MANAGER,"Solo un supervisore può definire una azione correttiva")
  nc=_open_nc(p)
  if p.status!=PracticeStatus.NON_VALIDATA or not nc or nc.status!=NonConformityStatus.APERTA:raise WorkflowError("Non esiste una non conformità aperta da sanare")
  instruction=instruction.strip();codes=tuple(dict.fromkeys(task_codes or []))
@@ -119,7 +128,13 @@ def validate_practice(p,actor,actor_role,outcome="VALIDATA",note="",attachments=
   nc.status=NonConformityStatus.CHIUSA;nc.closed_at=datetime.now(timezone.utc);nc.closed_by=actor;p.record("NONCONFORMITY_CLOSED",actor,nc_id=nc.id,validation_result_id=r.id)
  _transition(p,PracticeStatus.VALIDATA,actor);p.record("PRACTICE_VALIDATED",actor,result_id=r.id)
 def close_practice(p,actor,actor_role,outcome="CHIUSA",note="",attachments=None):
- _require_role(actor_role,UserRole.MANAGER,"Solo un manager può chiudere la pratica");allowed=PracticeStatus.VALIDATA if p.requires_validation else PracticeStatus.COMPLETATA
+ _require_role(actor_role,UserRole.MANAGER,"Solo un supervisore può chiudere la pratica");allowed=PracticeStatus.VALIDATA if p.requires_validation else PracticeStatus.COMPLETATA
  if p.status!=allowed:raise WorkflowError("La pratica non può essere chiusa nello stato corrente")
  if _open_nc(p):raise WorkflowError("La pratica ha una non conformità ancora aperta")
  r=_record_result(p,actor=actor,actor_role=actor_role,outcome=outcome,note=note,attachments=attachments,action="CLOSURE");p.closure_result_id=r.id;_transition(p,PracticeStatus.CHIUSA,actor);p.record("PRACTICE_CLOSED",actor,result_id=r.id)
+
+
+def task_executable(practice, task):
+ return (practice.status in {PracticeStatus.DA_FARE, PracticeStatus.IN_LAVORAZIONE}
+         and getattr(task, "active", True) and task.status != TaskStatus.COMPLETATO
+         and all(_task(practice, code).status == TaskStatus.COMPLETATO for code in task.depends_on))

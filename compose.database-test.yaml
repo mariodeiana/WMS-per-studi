@@ -1,0 +1,31 @@
+services:
+  wms-test-postgres:
+    image: postgres:17
+    container_name: asc-wms-test-postgres
+    env_file:
+      - /opt/asc/wms/secrets/test-postgres.env
+    volumes:
+      - wms-test-postgres-data:/var/lib/postgresql/data
+    networks:
+      - wms-test-db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wms_test -d wms_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  wms-test:
+    image: asc-wms:test-client-dialog-20260922
+    env_file:
+      - /opt/asc/wms/secrets/test-database.env
+    networks:
+      - wms-test-db
+    depends_on:
+      wms-test-postgres:
+        condition: service_healthy
+networks:
+  wms-test-db:
+    name: asc-wms-test-db
+volumes:
+  wms-test-postgres-data:
+    name: asc-wms-test-postgres-data

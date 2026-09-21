@@ -1,4 +1,5 @@
 <section class="workspace-heading"><div><p class="eyebrow">Amministrazione WMS</p><h1>Configurazione</h1><p class="subtitle">Struttura organizzativa e modelli di lavoro dello studio.</p></div></section>
+@if(savedDrafts().length) { <section class="workspace-card draft-recovery"><h2>Bozze recuperabili</h2><p>Disegni salvati sul server, non ancora pubblicati.</p>@for(saved of savedDrafts(); track saved.id) { <div><span><strong>{{ saved.snapshot.draft['name'] || saved.snapshot.draft['code'] || 'Nuovo Tipo pratica' }}</strong><small>{{ saved.updated_at | date:'dd/MM/yyyy HH:mm:ss' }}</small></span><button type="button" (click)="resumeDraft(saved)">Riprendi bozza</button><button type="button" class="text-button danger" (click)="discardDraft(saved)">Elimina bozza</button></div> }</section> }
 <section class="workspace-card config-workspace">
   <div class="workspace-tabs" role="tablist" aria-label="Sezioni configurazione">
     @for (m of meta; track m.key) { <button type="button" role="tab" [id]="'cfg-tab-'+m.key" aria-controls="cfg-panel" [attr.aria-selected]="entity === m.key" [tabIndex]="entity === m.key ? 0 : -1" [disabled]="busy()" (click)="select(m.key)" (keydown)="tabKey($event,'entity')">{{ m.title }}</button> }
@@ -9,15 +10,15 @@
     @if (error()) { <p class="message error" role="alert">{{ error() }}</p><button class="secondary" (click)="load()" [disabled]="busy()">Riprova</button> }
     @if (!loading()) {
       <label class="workspace-search"><span>Cerca in {{ current().title.toLowerCase() }}</span><input type="search" [(ngModel)]="filter" placeholder="Cerca per codice, nome o altri dati…"></label>
-      <div class="table-wrap"><table class="config-table"><thead><tr>@for(f of current().fields; track f.key) { <th scope="col">{{ f.label }}</th> }@if(entity === 'practice_types') { <th scope="col">Attività</th> }<th scope="col">Stato</th><th scope="col">Azioni</th></tr></thead><tbody>
-        @for(row of filteredRows(); track row.id) { <tr>@for(f of current().fields; track f.key) { <td>{{ display(row,f.key) || '—' }}</td> }@if(entity === 'practice_types') { <td>{{ taskCount(row) }}</td> }<td><span class="status" [class.state-inactive]="row.active === false">{{ entity === 'practices' ? row['status'] : row.active === false ? 'Disattivo' : 'Attivo' }}</span></td><td><div class="row-actions">
+      <div class="table-wrap"><table class="config-table"><thead><tr>@for(f of current().fields; track f.key) { <th scope="col">{{ f.label }}</th> }@if(entity === 'groups') { <th scope="col">Colore</th> }@if(entity === 'practice_types') { <th scope="col">Attività</th> }<th scope="col">Stato</th><th scope="col">Azioni</th></tr></thead><tbody>
+        @for(row of filteredRows(); track row.id) { <tr>@for(f of current().fields; track f.key) { <td>{{ display(row,f.key) || '—' }}</td> }@if(entity === 'groups') { <td><span class="group-color-chip" [style.background-color]="groupColor(row.id)" aria-label="Colore assegnato automaticamente">{{ groupColor(row.id) }}</span></td> }@if(entity === 'practice_types') { <td>{{ taskCount(row) }}</td> }<td><span class="status" [class.state-inactive]="row.active === false">{{ entity === 'practices' ? row['status'] : row.active === false ? 'Disattivo' : 'Attivo' }}</span></td><td><div class="row-actions">
           @if(entity === 'practices') { <button type="button" class="secondary" (click)="showPractice(row)" [disabled]="busy()">Attività</button> } @else { <button type="button" class="secondary" (click)="open(row)" [disabled]="busy()">Modifica</button><button type="button" class="text-button danger" (click)="remove(row)" [disabled]="busy()">Elimina</button> }
-        </div></td></tr> } @empty { <tr><td [attr.colspan]="current().fields.length + (entity === 'practice_types' ? 3 : 2)" class="empty">{{ filter ? 'Nessun risultato per questa ricerca.' : 'Nessun elemento configurato.' }}</td></tr> }
+        </div></td></tr> } @empty { <tr><td [attr.colspan]="current().fields.length + (entity === 'practice_types' || entity === 'groups' ? 3 : 2)" class="empty">{{ filter ? 'Nessun risultato per questa ricerca.' : 'Nessun elemento configurato.' }}</td></tr> }
       </tbody></table></div>
     }
   </div>
 </section>
-<dialog #editorDialog class="workspace-dialog" [class.model-dialog]="entity === 'practice_types'" aria-labelledby="editor-title" (cancel)="cancelEditor($event)">
+<dialog #editorDialog class="workspace-dialog" [class.model-dialog]="entity === 'practice_types'" [class.client-dialog]="entity === 'clients'" aria-labelledby="editor-title" (cancel)="cancelEditor($event)">
   @if (editor()) {
     <header class="dialog-heading"><div><p class="eyebrow">{{ current().title }}</p><h2 id="editor-title">{{ original ? 'Modifica · '+label(original) : entity === 'practices' ? 'Nuova pratica' : 'Nuovo elemento' }}</h2></div><button class="icon-button secondary" type="button" aria-label="Chiudi finestra" (click)="closeEditor()" [disabled]="busy()">×</button></header>
     <form #editorForm="ngForm" (ngSubmit)="editorForm.valid && save()">
@@ -27,18 +28,24 @@
           <button type="button" id="model-tasks-tab" role="tab" aria-controls="model-tasks" [attr.aria-selected]="modelTab === 'tasks'" [tabIndex]="modelTab === 'tasks' ? 0 : -1" (click)="modelTab='tasks'" (keydown)="tabKey($event,'model')">Attività <span class="count-badge">{{ tasks.length }}</span></button>
         </div>
       }
+      @if(entity==='practice_types') { <div class="draft-status" [class.draft-error]="draftProblem()" role="status"><span>{{ draftMessage() }}</span>@if(draftProblem()) { <a href="/login" target="_blank" rel="noopener">Riaccedi e scegli Amministratore in un’altra scheda</a><button type="button" class="text-button" (click)="persistDraft()">Riprova salvataggio</button><button type="button" class="text-button" (click)="saveDraftCopy()">Salva una copia della bozza</button> }<small>Salva modifiche pubblica il modello. Chiudi conserva la bozza sul server.</small></div> }
+      @if(entity === 'clients') {
+        <div class="workspace-tabs" role="tablist" aria-label="Scheda cliente">
+          @for(tab of clientTabs; track tab.key) { <button type="button" role="tab" [id]="'client-tab-'+tab.key" [attr.aria-controls]="'client-'+tab.key" [attr.aria-selected]="clientTab===tab.key" [tabIndex]="clientTab===tab.key?0:-1" (click)="clientTab=tab.key" (keydown)="tabKey($event,'client')">{{tab.label}}</button> }
+        </div>
+      }
       <div class="dialog-content">
         <fieldset class="editor-fields" [disabled]="busy()"><legend class="sr-only">Dati di configurazione</legend>
-          <section id="model-general" [hidden]="entity === 'practice_types' && modelTab !== 'general'" [attr.role]="entity === 'practice_types' ? 'tabpanel' : null" [attr.aria-labelledby]="entity === 'practice_types' ? 'model-general-tab' : null">
+          <section id="model-general" [hidden]="entity === 'clients' || (entity === 'practice_types' && modelTab !== 'general')" [attr.role]="entity === 'practice_types' ? 'tabpanel' : null" [attr.aria-labelledby]="entity === 'practice_types' ? 'model-general-tab' : null">
             @if (entity === 'practices') {
               <div class="fields"><label>Cliente<select name="client_id" [(ngModel)]="draft['client_id']" required><option value="">Seleziona cliente</option>@for (r of values('clients',true); track r.id) { <option [value]="r.id">{{ label(r) }}</option> }</select></label>
               <label>Modello<select name="model_id" [(ngModel)]="draft['model_id']" required><option value="">Seleziona modello</option>@for (r of values('practice_types',true); track r.id) { <option [value]="r.id">{{ label(r) }}</option> }</select></label>
               <label>Inizio periodo<input type="date" name="period_start" [(ngModel)]="draft['period_start']" required></label><label>Fine periodo<input type="date" name="period_end" [(ngModel)]="draft['period_end']" required></label><label>Scadenza pratica<input type="date" name="due_date" [(ngModel)]="draft['due_date']" required></label></div>
-              <p class="editor-help">Le attività e le assegnazioni saranno copiate dal modello selezionato.</p>
-            } @else {
+              <p class="editor-help">Le attività e le assegnazioni saranno copiate dal modello selezionato. La creazione è manuale; i tipi fuori repertorio sono extra contratto.</p>
+            } @else if(entity !== 'clients') {
               <div class="fields">@for (f of current().fields; track f.key) {
                 <label [class.field-wide]="f.type === 'textarea'">{{ f.label }}{{ ['id','name','code'].includes(f.key) ? ' *' : '' }}
-                  @if (entity === 'groups' && f.key === 'role') { <select [name]="f.key" [(ngModel)]="draft[f.key]" required>@for (role of roles(); track role) { <option [value]="role">{{ role }}</option> }</select> }
+                  @if (entity === 'groups' && f.key === 'role') { <select [name]="f.key" [(ngModel)]="draft[f.key]" required>@for (role of roles(); track role) { <option [value]="role">{{ roleLabel(role) }}</option> }</select> }
                   @else if (entity === 'memberships' && (f.key === 'user_id' || f.key === 'group_id')) { <select [name]="f.key" [(ngModel)]="draft[f.key]" required><option value="">Seleziona</option>@for (r of values(f.key === 'user_id' ? 'users' : 'groups'); track r.id) { <option [value]="r.id">{{ label(r) }}</option> }</select> }
                   @else if (f.type === 'textarea') { <textarea [name]="f.key" [(ngModel)]="draft[f.key]"></textarea> }
                   @else { <input [name]="f.key" [type]="f.type || 'text'" [(ngModel)]="draft[f.key]" [readOnly]="!!original && f.key === 'id'" [required]="['id','name','code'].includes(f.key)"> }
@@ -47,26 +54,79 @@
               <div class="editor-options"><label class="check"><input type="checkbox" name="active" [(ngModel)]="active">Attivo</label>@if (entity === 'practice_types') { <label class="check"><input type="checkbox" name="requires_validation" [(ngModel)]="requiresValidation">Richiede validazione finale</label> }</div>
             }
           </section>
+          @if(entity === 'clients') {
+            @for(tab of ['general','fiscal']; track tab) {
+              <section [id]="'client-'+tab" role="tabpanel" [attr.aria-labelledby]="'client-tab-'+tab" [hidden]="clientTab!==tab">
+                <div class="fields">@for(f of clientFields(tab); track f.key) {
+                  <label [class.field-wide]="f.type==='textarea'">{{f.label}}{{['id','name'].includes(f.key)?' *':''}}
+                    @if(f.type==='textarea') { <textarea [name]="f.key" [(ngModel)]="draft[f.key]"></textarea> }
+                    @else { <input [name]="f.key" [type]="f.type || 'text'" [(ngModel)]="draft[f.key]" [readOnly]="!!original && f.key==='id'" [required]="['id','name'].includes(f.key)"> }
+                  </label>
+                }</div>
+                @if(tab==='general') { <label>Stato<select name="active" [(ngModel)]="active"><option [ngValue]="true">Attivo</option><option [ngValue]="false">Inattivo</option></select></label> }
+                @if(tab==='fiscal') { <p class="editor-help">Cod. Azienda GIS è un riferimento esterno. L’integrazione con GIS potrà essere aggiunta in futuro. Liquidazione IVA: mensile, trimestrale o altro.</p> }
+              </section>
+            }
+            <section id="client-repertoire" role="tabpanel" aria-labelledby="client-tab-repertoire" [hidden]="clientTab!=='repertoire'">
+              <h3>Tipi pratica compresi nel contratto</h3><p>La generazione automatica utilizza questo repertorio. Puoi sempre creare manualmente altri tipi pratica: saranno extra contratto. Le modifiche valgono per le nuove pratiche.</p>
+              @for(model of values('practice_types'); track model.id) {
+                <label class="check"><input type="checkbox" [checked]="repertoire.includes(model.id)" (change)="toggle(repertoire,model.id,$any($event.target).checked)">{{label(model)}}{{model.active===false?' (inattivo: escluso dalla generazione)':''}}</label>
+              } @empty { <p>Nessun tipo pratica configurato.</p> }
+            </section>
+            <section id="client-practices" role="tabpanel" aria-labelledby="client-tab-practices" [hidden]="clientTab!=='practices'">
+              <table><thead><tr><th>Pratica</th><th>Origine</th><th>Regime economico</th></tr></thead><tbody>@for(p of clientPractices(); track p.id) { <tr><td><a [routerLink]="['/practices',p.id]" (click)="closeEditor()">{{p['practice_type_code']}} · {{p.id}}</a></td><td>{{p['origin'] || 'Non rilevata (storico)'}}</td><td>{{economicLabel(p['economic_regime'])}}</td></tr> } @empty { <tr><td colspan="3">Nessuna pratica.</td></tr> }</tbody></table>
+            </section>
+          }
           @if (entity === 'practice_types') {
             <section id="model-tasks" role="tabpanel" aria-labelledby="model-tasks-tab" [hidden]="modelTab !== 'tasks'">
               <div class="workspace-toolbar"><strong>{{ tasks.length }} attività nel modello</strong><button type="button" class="secondary" (click)="addTask()">+ Aggiungi attività</button></div>
-              <p class="editor-help">Apri un’attività per modificarla. L’ordine è visivo; esiti e dipendenze definiscono il percorso di lavoro.</p>
+              <p class="editor-help">Apri un’attività per modificarla. L’ordine è visivo. Le transizioni definiscono il percorso; la casella Nodo iniziale definisce gli avvii. Più destinazioni attivano rami paralleli.</p>
+              @if(modelTab === 'tasks') {
+                <div class="graph-design-layout" [class.has-inspector]="graphTask || edgeDraft"><div class="graph-design-canvas"><wms-workflow-graph [tasks]="graphTasks()" [design]="true" [disabled]="busy()" (newNode)="addTask($event)" (nodeOpen)="openGraphTask($event)" (connect)="newEdge($event)" (edgeOpen)="editEdge($event)" (positionChange)="moveGraphNode($event)" (arrange)="arrangeGraph()" />
+                <div class="graph-quick-links"><button type="button" class="secondary" (click)="newEdge()" [disabled]="!tasks.length">+ Collegamento</button>@for(t of tasks; track t) { <button type="button" class="text-button" (click)="openGraphTask(t.code)">Modifica {{ t.code }}</button> }</div>
+                </div><aside class="graph-inspector" [hidden]="!graphTask && !edgeDraft">
+                @for(t of (graphTask ? [graphTask] : []); track t) {
+                  <div class="workspace-toolbar"><h3>Modifica {{ t.code }}</h3><button type="button" class="text-button" (click)="graphTask=null" aria-label="Chiudi pannello attività">×</button></div>
+                  <label>Codice attività<input name="graph-code" [ngModel]="t.code" (change)="renameTask(t,$any($event.target).value)" required></label>
+                  <label>Titolo<input name="graph-title" [(ngModel)]="t.title" required></label>
+                  <label>Gruppo responsabile<select [style.background-color]="groupColor(t.assigned_group)" name="graph-group" [(ngModel)]="t.assigned_group" required><option value="">Seleziona</option>@for(g of operators(); track g.id) { <option [value]="g.id">{{ label(g) }}</option> }</select></label>
+                  <label>Giorni prima della scadenza<input name="graph-days" type="number" min="0" max="3650" [(ngModel)]="t.days_before_due" required></label>
+                  <label class="check"><input name="graph-initial" type="checkbox" [(ngModel)]="t.is_initial">Nodo iniziale</label>
+                  <label>Istruzioni<textarea name="graph-instructions" [(ngModel)]="t.instructions"></textarea></label>
+                  <h4>Esiti e uscite</h4>@for(choice of t.choices; track choice; let j=$index) { <div class="graph-inspector-outcome"><label>Esito<input [name]="'graph-outcome-'+j" [(ngModel)]="choice.name" required></label><button type="button" class="text-button danger" (click)="t.choices.splice(j,1)" [attr.aria-label]="'Rimuovi esito '+choice.name">×</button><small>→ {{ choice.destinations.join(', ') || 'Fine ramo' }}</small></div> }
+                  <button type="button" class="secondary" (click)="t.choices.push({name:'',destinations:[]})">+ Esito</button>
+                  <p class="editor-help">Le uscite compaiono sul nodo. Trascinale sulle attività successive per collegarle.</p>
+                  <button type="button" class="text-button danger" (click)="removeTask(tasks.indexOf(t))">Rimuovi attività</button>
+                }
+                @if(edgeDraft; as edge) {
+                  <section class="graph-edge-editor" aria-label="Modifica collegamento"><strong>{{ originalEdge ? 'Modifica collegamento' : 'Nuovo collegamento' }}</strong>
+                    <div class="fields"><label>Da attività<select name="edge-from" [(ngModel)]="edge.from">@for(t of tasks; track t) { <option [value]="t.code">{{ t.code }} · {{ t.title }}</option> }</select></label>
+                    <label>Esito (* = qualsiasi)<input name="edge-outcome" [(ngModel)]="edge.outcome" placeholder="OK, KO oppure *"></label>
+                    <label>A attività<select name="edge-to" [(ngModel)]="edge.to"><option value="@END">Fine ramo</option>@for(t of tasks; track t) { <option [value]="t.code">{{ t.code }} · {{ t.title }}</option> }</select></label></div>
+                    <p class="editor-help">Più collegamenti con lo stesso esito attivano attività in parallelo. Esiti diversi definiscono percorsi alternativi.</p>
+                    @if(edgeError) { <p role="alert" class="message error">{{ edgeError }}</p> }
+                    <div class="row-actions"><button type="button" (click)="saveEdge()">Applica collegamento</button>@if(originalEdge) { <button type="button" class="text-button danger" (click)="deleteEdge()">Rimuovi collegamento</button> }<button type="button" class="secondary" (click)="edgeDraft=null; originalEdge=null">Annulla collegamento</button></div>
+                  </section>
+                }
+                </aside></div>
+              }
               @for (t of tasks; track t; let i = $index) {
-                <details class="model-task" [open]="expandedTask === t" (toggle)="expandedTask = $any($event.target).open ? t : expandedTask === t ? null : expandedTask">
-                  <summary><span class="task-number">{{ i+1 }}</span><span class="task-summary"><strong>{{ t.code || 'Nuova attività' }} — {{ t.title || 'Da compilare' }}</strong><small>{{ groupName(t.assigned_group) }} · {{ t.days_before_due || 0 }} giorni prima · {{ t.required ? 'Obbligatoria' : 'Facoltativa' }}</small></span><span class="disclosure" aria-hidden="true">⌄</span></summary>
+                <details class="model-task" [id]="'model-node-'+i" [open]="expandedTask === t" (toggle)="expandedTask = $any($event.target).open ? t : expandedTask === t ? null : expandedTask">
+                  <summary [attr.title]="taskSummary(t)" [style.background]="taskBackground(t)"><span class="task-number">{{ i+1 }}</span><span class="task-summary"><strong>{{ t.code || 'Nuova attività' }} — {{ t.title || 'Da compilare' }}</strong><span class="graph-kind-tags">@for(kind of taskKinds(t); track kind.label) { <span>{{ kind.label }}</span> }</span><small>{{ groupName(t.assigned_group) }} · {{ t.days_before_due || 0 }} giorni prima · {{ initial(t) ? 'Iniziale' : 'Attivata da una transizione' }}</small></span><span class="disclosure" aria-hidden="true">⌄</span></summary>
                   <div class="model-task-body"><div class="fields">
                     <label>Codice attività *<input [name]="'code'+i" [ngModel]="t.code" (change)="renameTask(t,$any($event.target).value)" required></label><label>Titolo *<input [name]="'title'+i" [(ngModel)]="t.title" required></label>
-                    <label>Gruppo responsabile *<select [name]="'group'+i" [(ngModel)]="t.assigned_group" required><option value="">Seleziona</option>@for(g of operators(); track g.id) { <option [value]="g.id">{{ label(g) }}{{ g.active === false ? ' (disattivo)' : '' }}</option> }</select></label>
+                    <label>Gruppo responsabile *<select [style.background-color]="groupColor(t.assigned_group)" [name]="'group'+i" [(ngModel)]="t.assigned_group" required><option value="">Seleziona</option>@for(g of operators(); track g.id) { <option [value]="g.id">{{ label(g) }}{{ g.active === false ? ' (disattivo)' : '' }}</option> }</select></label>
                     <label>Giorni prima della scadenza<input type="number" min="0" max="3650" step="1" [name]="'days'+i" [(ngModel)]="t.days_before_due" required></label>
+                    <label class="check"><input type="checkbox" [name]="'initial'+i" [(ngModel)]="t.is_initial">Nodo iniziale: attivo all’apertura della pratica</label>
                     <label class="field-wide">Istruzioni operative<textarea [name]="'instructions'+i" [(ngModel)]="t.instructions"></textarea></label>
-                  </div><label class="check"><input type="checkbox" [name]="'required'+i" [(ngModel)]="t.required">Obbligatoria</label>
-                  <details class="dependency-editor"><summary>Dipendenze esplicite <span class="count-badge">{{ t.depends_on.length }}</span></summary><div class="choice-list">@for (other of tasks; track other) { @if (other !== t && other.code) { <label class="check"><input type="checkbox" [checked]="t.depends_on.includes(other.code)" (change)="toggle(t.depends_on,other.code,$any($event.target).checked)">{{ other.code }} · {{ other.title }}</label> } }</div></details>
+                  </div><p class="editor-help">Ogni attività raggiunta deve essere completata per concludere il percorso.</p>
+
                   <div class="workspace-toolbar workflow-heading"><h3>Esiti e attività successive</h3><button type="button" class="secondary" (click)="t.choices.push({name:'',destinations:[]})">+ Aggiungi esito</button></div>
                   @for (choice of t.choices; track choice; let j = $index) {
-                    <div class="outcome-editor"><div class="outcome-heading"><label>Esito *<input [name]="'outcome'+i+'-'+j" [(ngModel)]="choice.name" required></label><button type="button" class="text-button danger" (click)="t.choices.splice(j,1)">Rimuovi esito</button></div><p class="editor-help">Attiva le attività selezionate, oppure termina il percorso.</p>
-                      <div class="choice-list">@for (other of tasks; track other) { @if (other !== t && other.code) { <label class="check"><input type="checkbox" [checked]="choice.destinations.includes(other.code)" (change)="toggle(choice.destinations,other.code,$any($event.target).checked)">{{ other.code }} · {{ other.title }}</label> } }</div>
+                    <div class="outcome-editor"><div class="outcome-heading"><label>Esito (* = qualsiasi esito)<input [name]="'outcome'+i+'-'+j" [(ngModel)]="choice.name" required></label><button type="button" class="text-button danger" (click)="t.choices.splice(j,1)">Rimuovi esito</button></div><p class="editor-help">Attiva tutte le destinazioni selezionate. Nessuna destinazione o Fine termina questo ramo; gli altri rami attivi proseguono.</p>
+                      <div class="choice-list"><label class="check"><input type="checkbox" [checked]="choice.destinations.includes('@END')" (change)="toggle(choice.destinations,'@END',$any($event.target).checked)">Fine ramo (@END)</label>@for (other of tasks; track other) { @if (other !== t && other.code) { <label class="check"><input type="checkbox" [checked]="choice.destinations.includes(other.code)" (change)="toggle(choice.destinations,other.code,$any($event.target).checked)">{{ other.code }} · {{ other.title }}</label> } }</div>
                     </div>
-                  } @empty { <p class="editor-help">Nessun esito personalizzato. Restano disponibili gli esiti standard.</p> }
+                  } @empty { <p class="editor-help">Nessuna transizione: il completamento termina questo ramo.</p> }
                   <div class="task-editor-footer"><div class="row-actions"><button type="button" class="secondary" [disabled]="i === 0" (click)="move(i,-1)">↑ Sposta su</button><button type="button" class="secondary" [disabled]="i === tasks.length-1" (click)="move(i,1)">↓ Sposta giù</button></div><button type="button" class="text-button danger" (click)="removeTask(i)">Rimuovi attività</button></div>
                 </div></details>
               } @empty { <div class="workspace-empty"><h3>Definisci il lavoro da svolgere</h3><p>Aggiungi la prima attività, il gruppo responsabile e le istruzioni operative.</p></div> }
@@ -75,14 +135,14 @@
         </fieldset>
       </div>
       @if (formError()) { <p class="dialog-error" role="alert">{{ formError() }}</p> }
-      <footer class="dialog-footer"><small>{{ editorForm.invalid ? 'Completa i campi obbligatori (*) nelle schede.' : entity === 'practice_types' ? 'Le modifiche si applicano alle nuove pratiche.' : 'I dati saranno salvati nella configurazione dello studio.' }}</small><div class="row-actions"><button type="button" class="secondary" (click)="closeEditor()" [disabled]="busy()">Annulla</button><button type="submit" [disabled]="busy() || editorForm.invalid">{{ busy() ? 'Salvataggio…' : entity === 'practices' ? 'Crea pratica' : 'Salva modifiche' }}</button></div></footer>
+      <footer class="dialog-footer"><small>{{ editorForm.invalid ? 'Completa i campi obbligatori (*) nelle schede.' : entity === 'practice_types' ? 'Le modifiche si applicano alle nuove pratiche.' : 'I dati saranno salvati nella configurazione dello studio.' }}</small><div class="row-actions"><button type="button" class="secondary" (click)="closeEditor()" [disabled]="busy()">{{ entity === 'practice_types' ? 'Chiudi e conserva bozza' : 'Annulla' }}</button><button type="submit" [disabled]="busy() || editorForm.invalid">{{ busy() ? 'Salvataggio…' : entity === 'practices' ? 'Crea pratica' : 'Salva modifiche' }}</button></div></footer>
     </form>
   }
 </dialog>
 <dialog #practiceDialog class="workspace-dialog model-dialog" aria-labelledby="practice-preview-title" (cancel)="closePractice()">
   @if (practicePreview(); as p) {
     <header class="dialog-heading"><div><p class="eyebrow">Attività della pratica</p><h2 id="practice-preview-title">{{ p.practice_type_code }} · {{ p.id }}</h2></div><button type="button" class="icon-button secondary" (click)="closePractice()" aria-label="Chiudi dettaglio pratica">×</button></header>
-    <div class="dialog-content"><p class="muted">Cliente {{ p.client_id }} · Scadenza {{ p.due_date | date:'dd/MM/yyyy' }}</p><div class="table-wrap"><table><thead><tr><th>Attività</th><th>Gruppo</th><th>Scadenza</th><th>Percorso</th><th>Stato</th></tr></thead><tbody>@for(t of p.tasks; track t.code) { <tr><td><strong>{{ t.code }} · {{ t.title }}</strong><small class="preline">{{ t.instructions }}</small></td><td>{{ groupName(t.assigned_group) }}</td><td>{{ (t.due_date || p.due_date) | date:'dd/MM/yyyy' }}</td><td>@for(c of t.transitions | keyvalue; track c.key) { <small>{{ c.key }} → {{ c.value.join(', ') || 'Fine' }}</small> } @empty { Fine }</td><td><span class="status">{{ t.status }}</span></td></tr> }</tbody></table></div></div>
+    <div class="dialog-content"><p class="muted">Cliente {{ p.client_id }} · Scadenza {{ p.due_date | date:'dd/MM/yyyy' }}</p><div class="table-wrap"><table><thead><tr><th>Attività</th><th>Gruppo</th><th>Scadenza</th><th>Percorso</th><th>Stato</th></tr></thead><tbody>@for(t of p.tasks; track t.code) { <tr><td><strong>{{ t.code }} · {{ t.title }}</strong><small class="preline">{{ t.instructions }}</small></td><td>{{ groupName(t.assigned_group) }}</td><td>{{ (t.due_date || p.due_date) | date:'dd/MM/yyyy' }}</td><td>@for(c of t.transitions | keyvalue; track c.key) { <small>{{ c.key }} → {{ c.value.join(', ') || 'Fine' }}</small> } @empty { Fine }</td><td><span class="status">{{ t.active === false ? 'Non raggiunta' : t.status }}</span></td></tr> }</tbody></table></div></div>
     <footer class="dialog-footer"><a [routerLink]="['/practices',p.id]" (click)="closePractice()">Apri fascicolo completo →</a><button type="button" class="secondary" (click)="closePractice()">Chiudi</button></footer>
   }
 </dialog>

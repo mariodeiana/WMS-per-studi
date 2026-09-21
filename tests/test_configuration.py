@@ -20,10 +20,28 @@ class ConfigurationTest(unittest.TestCase):
         self.service=OrganizationalPracticeService(state_path=Path(self.tmp.name)/'state.pkl')
         self.config.save('clients', {'id':'C-TEST','name':'Cliente prova','active':True})
         self.model={'id':'TEST','code':'TEST','name':'Modello prova','active':True,'requires_validation':False,'tasks':[
-            {'code':'A','title':'Raccolta','assigned_group':'contabili','instructions':'Raccogli documenti','days_before_due':5,'required':True,'depends_on':[]},
-            {'code':'B','title':'Controllo','assigned_group':'contabili','days_before_due':0,'required':True,'depends_on':['A']}]}
+            {'code':'A','title':'Raccolta','assigned_group':'contabili','instructions':'Raccogli documenti','days_before_due':5,'required':True,'transitions':{'*':['B']}},
+            {'code':'B','title':'Controllo','assigned_group':'contabili','days_before_due':0,'required':True,'transitions':{'*':['@END']}}]}
         self.config.save('practice_types', self.model)
         self.body={'client_id':'C-TEST','model_id':'TEST','period_start':'2026-09-01','period_end':'2026-09-30','due_date':'2026-10-16'}
+
+    def test_group_colors_survive_upgrade_rename_and_restart(self):
+        before = json.loads(self.path.read_text())
+        for group in before['groups']:
+            group.pop('color', None)
+        self.path.write_text(json.dumps(before))
+        upgraded = AdminConfigStore(self.path)
+        colors = {g['id']: g['color'] for g in upgraded.list('groups')}
+        self.assertEqual(len(colors), len(set(colors.values())))
+        after = json.loads(self.path.read_text())
+        for group in after['groups']:
+            group.pop('color')
+        self.assertEqual(before, after)
+        group = upgraded.list('groups')[0]
+        upgraded.save('groups', {**group, 'name': 'Nome aggiornato', 'color': '#000000'})
+        self.assertEqual(colors, {g['id']: g['color'] for g in AdminConfigStore(self.path).list('groups')})
+        added = upgraded.save('groups', {'id':'new-color','name':'Nuovo gruppo','role':'OPERATORE'})
+        self.assertNotIn(added['color'], colors.values())
 
     def test_config_without_demo_seed_starts_empty(self):
         path = Path(self.tmp.name) / "prod-config.json"
@@ -56,8 +74,8 @@ class ConfigurationTest(unittest.TestCase):
     def test_reject_invalid_dependencies_groups_and_deadlines(self):
         for mutation in ['cycle','missing','duplicate','group','days']:
             model=copy.deepcopy(self.model)
-            if mutation=='cycle':model['tasks'][0]['depends_on']=['B']
-            if mutation=='missing':model['tasks'][0]['depends_on']=['missing']
+            if mutation=='cycle':model['tasks'][1]['transitions']={'*':['A']}
+            if mutation=='missing':model['tasks'][0]['transitions']={'*':['missing']}
             if mutation=='duplicate':model['tasks'][1]['code']='A'
             if mutation=='group':model['tasks'][0]['assigned_group']='manager'
             if mutation=='days':model['tasks'][0]['days_before_due']=-1

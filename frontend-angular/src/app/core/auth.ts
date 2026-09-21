@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { catchError, throwError } from 'rxjs';
-import { Api, message } from './api';
+import { Api, message, KEEP_EDITOR } from './api';
 import { Session } from './models';
 
 export function home(role?: string): string {
@@ -40,7 +40,7 @@ export const authGuard: CanActivateFn = async route => {
 export const sessionInterceptor: HttpInterceptorFn = (request, next) => {
   const auth = inject(Auth);
   return next(request).pipe(catchError(error => {
-    if (error.status === 401 && !['/api/login', '/api/session'].includes(request.url)) auth.expire();
+    if (error.status === 401 && !request.context.get(KEEP_EDITOR) && !['/api/login', '/api/session'].includes(request.url)) auth.expire();
     return throwError(() => error);
   }));
 

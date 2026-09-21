@@ -1,0 +1,34 @@
+<section class="workflow-graph" aria-label="Grafo del workflow">
+  <div class="graph-toolbar"><div><strong>{{ design() ? 'Disegna il percorso' : 'Percorso della pratica' }}</strong><p>{{ design() ? 'Doppio clic sullo sfondo per creare un’attività. Clic sul nodo per modificarlo. Trascina i nodi dal titolo. Trascina dall’uscita di un esito all’ingresso di una o più attività successive.' : 'Apri un’attività dal suo nodo. Le frecce verdi indicano il percorso attraversato.' }}</p></div><div class="row-actions">
+    <button type="button" class="secondary" (click)="zoom()?.zoomOut()" aria-label="Riduci grafo">−</button><button type="button" class="secondary" (click)="zoom()?.zoomIn()" aria-label="Ingrandisci grafo">+</button><button type="button" class="secondary" (click)="fit()">Adatta</button>
+    @if(design()) { <button type="button" class="secondary" [disabled]="disabled()" (click)="addInCenter()">+ Attività nel grafo</button><button type="button" class="secondary" [disabled]="disabled()" (click)="arrangeNodes()">Disponi automaticamente</button> }
+  </div></div>
+  <div class="graph-legend graph-kind-legend" aria-label="Tipi di nodo"><span><i style="background:#dbeafe"></i>Iniziale</span><span><i style="background:#fce1de"></i>Finale</span><span><i style="background:#eee1fa"></i>Più esiti</span><span class="muted">Più caratteristiche: fondino a fasce</span></div>
+  @if(responsibleGroups().length) { <div class="graph-legend graph-group-legend" aria-label="Gruppi responsabili"><strong>Gruppo responsabile</strong>@for(group of responsibleGroups(); track group.id) { <span class="group-color-chip" [style.background-color]="group.color">{{ group.name }}</span> }</div> }
+  @if(!design()) { <div class="graph-legend"><span class="done">✓ Bordo verde: completata</span><span class="active">● Bordo blu: attiva</span><span class="unreached">○ Bordo grigio: non raggiunta</span></div> }
+  @if(design() && initialNodes().length > 1) { <div class="graph-diagnostics" role="status"><strong>Attenzione: {{ initialNodes().length }} nodi iniziali</strong><p>Queste attività partiranno in parallelo: @for(node of initialNodes(); track node.code; let last=$last) { <button type="button" class="text-button" (click)="open(node.code)">{{ node.code }}</button>{{ last ? '.' : ', ' }} } Verifica che sia voluto. Questo avviso non impedisce la creazione della pratica.</p></div> }
+  @if(issues().length) { <div class="graph-diagnostics" role="status"><strong>Controlla i collegamenti</strong><ul>@for(issue of issues(); track issue.code) { <li>@if(issue.code) { <button type="button" class="text-button" (click)="open(issue.code)">{{ issue.code }}</button> · }{{ issue.message }}</li> }</ul><p>Puoi salvare il modello, ma correggi queste segnalazioni prima di creare una pratica.</p></div> }
+  @if(nodes().length || design()) {
+    <f-flow #flowHost (dblclick)="createAt($event)" fDraggable (fCreateConnection)="create($event)" (fSelectionChange)="select($event)" (fNodesRendered)="ready()">
+      <f-canvas fZoom [fWheelTrigger]="zoomGesture" [fZoomMinimum]="0.15" [fZoomMaximum]="2">
+        <f-connection-for-create fType="bezier"><f-connection-marker-arrow /></f-connection-for-create>
+        @for(edge of edges(); track edge.id) {
+          <f-connection [fConnectionId]="edge.id" [fSourceId]="outputPort(edge.from,edge.outcome)" [fTargetId]="port(edge.to,'in:')" fType="bezier" [fReassignDisabled]="true" [class.traversed]="edge.traversed && !design()" [class.implicit]="edge.implicit" [fSelectionDisabled]="!design() || disabled()">
+            <f-connection-marker-arrow />
+            <button fConnectionContent [offset]="labelOffset(edge)" type="button" class="graph-edge-label" [disabled]="!design() || disabled()" (click)="edgeOpen.emit(edge)" [attr.aria-label]="'Transizione '+edge.from+' → '+edge.to+' · '+edge.outcome">{{ edge.outcome === '*' ? 'Al completamento' : edge.outcome }}</button>
+          </f-connection>
+        }
+        @for(node of nodes(); track node.code) {
+          <article fNode [fNodeId]="node.code" [fNodePosition]="node.position" (fNodePositionChange)="moved(node.code,$event)" [fNodeDraggingDisabled]="!design() || disabled()" class="graph-node" [attr.title]="nodeSummary(node)" [style.background]="nodeBackground(node)" [class.graph-orphan]="orphan(node.code)" [attr.data-state]="node.state" [class.graph-end]="node.code==='@END'">
+            <span fConnector fConnectorType="target" [fConnectorId]="port(node.code,'in:')" fConnectorConnectableSide="left" [fConnectorMultiple]="true" class="graph-port graph-input" [attr.aria-label]="'Ingresso '+node.code"></span>
+            <header fDragHandle [style.background-color]="nodeGroup(node)?.color"><small>{{ node.code === '@END' ? 'TERMINE' : node.code }}</small><span>{{ node.label }}</span>@if(nodeGroup(node); as group) { <strong class="graph-group-name">{{ group.name }}</strong> }</header>
+            <div class="graph-kind-tags">@for(kind of nodeKinds(node); track kind.label) { <span>{{ kind.label }}</span> }</div>
+            <button type="button" class="graph-node-open" [disabled]="node.code==='@END' || disabled()" (click)="open(node.code)">{{ node.title }}</button>
+            @for(outcome of node.outcomes; track outcome) { <div class="graph-outcome"><span>{{ outcome === '*' ? (node.outcomes.length === 1 ? 'Al completamento' : 'Altri esiti / predefinito') : outcome }}</span><span fConnector fConnectorType="source" [fConnectorId]="outputPort(node.code,outcome)" fConnectorConnectableSide="right" [fConnectorMultiple]="true" [fConnectorDisabled]="!design() || disabled()" class="graph-port graph-output" [attr.aria-label]="'Uscita '+node.code+' · '+outcome"></span></div> }
+          </article>
+        }
+      </f-canvas>
+    </f-flow>
+  } @else { <p class="empty">Aggiungi un’attività per iniziare il disegno.</p> }
+  <p class="graph-footnote">{{ design() ? 'Le frecce tratteggiate rappresentano una fine ramo implicita. Spostare i nodi cambia solo il disegno. Le modifiche vengono applicate con Salva modifiche.' : 'Fine ramo non chiude automaticamente la pratica: gli altri rami, la validazione e la chiusura prevista devono essere completati.' }}</p>
+</section>

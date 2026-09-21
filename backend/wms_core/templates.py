@@ -45,9 +45,11 @@ PRACTICE_TEMPLATES = {
 
 
 def build_tasks(practice_type_code: str) -> list[Task]:
+    specs = PRACTICE_TEMPLATES[practice_type_code]
     return [
-        Task(code=code, title=title, instructions=instructions)
-        for code, title, instructions in PRACTICE_TEMPLATES[practice_type_code]
+        Task(code=code, title=title, instructions=instructions, active=index == 0,
+             transitions={"*": (specs[index + 1][0],) if index + 1 < len(specs) else ("@END",)})
+        for index, (code, title, instructions) in enumerate(specs)
     ]
 
 

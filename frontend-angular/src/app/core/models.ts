@@ -3,6 +3,7 @@ export interface Session { user: { username: string; display_name: string }; act
 export interface PracticeSummary {
   id: string; client_id: string; client_name?: string; practice_type_code: string;
   period_start: string; period_end: string; due_date: string; status: string;
+  active_tasks?: string[];
   progress: { completed: number; total: number; percent: number };
   situation: { code: string; label: string }; urgency: { level: string; label: string; detail: string };
   waiting_hours?: number; waiting_since?: string; validated_at?: string; validation_outcome?: string; validation_note?: string;
@@ -18,7 +19,9 @@ export interface Result {
 export interface Task {
   code: string; title: string; instructions: string; status: string; active: boolean; required: boolean;
   assigned_group: string; claimed_by: string | null; completed_by: string | null; due_date: string;
+  graph_position?: {x:number;y:number} | null;
   depends_on: string[]; outcomes: string[]; transitions: Record<string, string[]>;
+  work_notes?: {actor:string;note:string;at:string}[];
   result_id: string | null; work_note: string; reopen_reason: string;
 }
 export interface QueueTask extends Task {
@@ -29,7 +32,8 @@ export interface QueueTask extends Task {
 }
 export interface AuditEvent { event_type: string; actor: string; at: string; details: Record<string, unknown>; }
 export interface Practice {
-  id: string; client_id: string; practice_type_code: string; period_start: string; period_end: string;
+  origin?: string | null; economic_regime?: string | null; practice_type_id?: string | null;
+  id: string; client_id: string; client_name?: string; practice_type_code: string; period_start: string; period_end: string;
   due_date: string; status: string; tasks: Task[]; nonconformities: NonConformity[]; requires_validation: boolean;
   progress: { completed: number; total: number }; results: Result[]; evidence: Evidence[]; audit: AuditEvent[];
 }

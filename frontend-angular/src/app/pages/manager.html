@@ -1,6 +1,6 @@
   <section class="page-heading">
     <div>
-      <p class="eyebrow">Scrivania Manager</p>
+      <p class="eyebrow">Scrivania Supervisore</p>
       <h1>Pratiche in esecuzione</h1>
       <p class="subtitle">
         Controllo operativo delle pratiche attive, ordinate per urgenza.
@@ -120,7 +120,7 @@
                 <strong>{{ p.progress.completed }}/{{ p.progress.total }}</strong>
               </div>
             </div>
-            <small>{{ p.progress.percent }}%</small>
+            <small>{{ p.progress.percent }}% del percorso raggiunto</small><small>Attive: {{ p.active_tasks?.join(', ') || 'Nessuna' }}</small>
           </div>
 
           <div>

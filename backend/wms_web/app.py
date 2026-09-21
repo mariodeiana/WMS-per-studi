@@ -7,15 +7,18 @@ from urllib.parse import parse_qs,unquote,urlparse,quote
 from backend.wms_core.models import NonConformity,UserRole
 from backend.wms_core.workflow import WorkflowError,define_corrective_action
 from backend.wms_web.auth import SessionRegistry
+from backend.wms_web.model_drafts import ModelDraftStore
 from backend.wms_web.admin_config import AdminConfigStore
-from backend.wms_web.config_models import create_configured_practice
+from backend.wms_web.database import Database
+from backend.wms_web.config_models import create_configured_practice, generate_repertoire_practices
 from backend.wms_web.organization_service import OrganizationalPracticeService
 from backend.wms_web.service import DEMO_PRACTICE_ID, DEMO_CLIENT_NAMES
-ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DATA_DIR=Path(os.environ.get("WMS_DATA_DIR",ROOT));DATA_DIR.mkdir(parents=True,exist_ok=True);DEMO_STATE=DATA_DIR/".wms-demo-state.pkl";CONFIG_STATE=DATA_DIR/".wms-config.json";WMS_ENV=os.environ.get("WMS_ENV","DEV").upper();CONFIG=AdminConfigStore(CONFIG_STATE,seed_demo=WMS_ENV!="PROD");AUTH=SessionRegistry(CONFIG)
+ROOT=Path(__file__).resolve().parents[2];FRONTEND=ROOT/"frontend";DATA_DIR=Path(os.environ.get("WMS_DATA_DIR",ROOT));DATA_DIR.mkdir(parents=True,exist_ok=True);DEMO_STATE=DATA_DIR/".wms-demo-state.pkl";CONFIG_STATE=DATA_DIR/".wms-config.json";WMS_ENV=os.environ.get("WMS_ENV","DEV").upper();DATABASE=Database(os.environ["WMS_DATABASE_URL"]) if os.environ.get("WMS_DATABASE_URL") else None;CONFIG=AdminConfigStore(CONFIG_STATE,seed_demo=WMS_ENV=="DEV",database=DATABASE);AUTH=SessionRegistry(CONFIG)
 ANGULAR_FRONTEND=Path(os.environ.get("WMS_ANGULAR_DIR",ROOT/"frontend-angular/dist/frontend-angular/browser")).resolve()
 FRONTEND_MODE=os.environ.get("WMS_FRONTEND","legacy").lower()
+DRAFTS=ModelDraftStore(DATA_DIR/".wms-model-drafts")
 class WMSRequestHandler(BaseHTTPRequestHandler):
- service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=WMS_ENV!="PROD",seed_demo=WMS_ENV!="PROD");debug_mode=False
+ service=OrganizationalPracticeService(state_path=DEMO_STATE,rich_demo=WMS_ENV=="DEV",seed_demo=WMS_ENV=="DEV",database=DATABASE);debug_mode=False
  def _token(self):
   cookie=SimpleCookie(self.headers.get("Cookie", ""));item=cookie.get("WMSSESSION");return item.value if item else None
  def _session(self):return AUTH.describe(self._token())
@@ -30,13 +33,14 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
  def do_GET(self):
   parsed=urlparse(self.path);path=parsed.path;query=parse_qs(parsed.query)
   if path=="/api/health":self._json({"status":"ok"});return
-  if path=="/api/runtime":self._json({"debug":bool(self.debug_mode),"environment":WMS_ENV,"frontend":FRONTEND_MODE});return
+  if path=="/api/runtime":self._json({"debug":bool(self.debug_mode),"environment":WMS_ENV,"frontend":FRONTEND_MODE,"persistence":"postgresql" if DATABASE and DATABASE.postgres else "legacy"});return
   if path=="/api/session":
    try:self._json(self._session())
    except PermissionError as e:self._json({"error":str(e)},401)
    return
   if path.startswith("/api/") and not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
   if path=="/api/admin/practices":self._api(lambda:(self._require_admin(),self._configured_practices())[1]);return
+  if path=="/api/admin/model-drafts":self._api(lambda:DRAFTS.list(self._require_admin()["username"]));return
   if path=="/api/admin/config":self._api(lambda:(self._require_admin(),CONFIG.snapshot())[1]);return
   if path=="/api/manager/assignment-groups":self._api(self._assignment_groups);return
   if path=="/api/manager/practices":self._api(lambda:self._manager_practices());return
@@ -54,7 +58,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    if len(parts)==2:self._api(lambda:self.service.task_detail_for(parts[0],parts[1],self._principal(),context))
    else:self._json({"error":"Endpoint inesistente"},404)
    return
-  if path.startswith("/api/practices/"):self._api(lambda:self.service.get_for(unquote(path[len("/api/practices/"):]),self._principal()));return
+  if path.startswith("/api/practices/"):self._api(lambda:self._with_client_names([self.service.get_for(unquote(path[len("/api/practices/"):]),self._principal())])[0]);return
   if path.startswith("/api/"):self._json({"error":"Endpoint inesistente"},404);return
   if FRONTEND_MODE=="angular":self._angular(path,query);return
   if path not in {"/login.html","/login.js","/styles.css"} and path.endswith((".html","/")) and not self._require_session():self._redirect("/login.html");return
@@ -72,7 +76,10 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    except PermissionError as e:self._json({"error":str(e)},403)
    return
   if not self._require_session():self._json({"error":"Sessione non autenticata"},401);return
+  if path=="/api/admin/practices/generate":self._api(lambda:generate_repertoire_practices(self.service,CONFIG,body,self._principal()));return
   if path=="/api/admin/practices":self._api(lambda:create_configured_practice(self.service,CONFIG,body,self._principal()));return
+  if path=="/api/admin/model-drafts":self._api(lambda:DRAFTS.save(self._require_admin()["username"],body));return
+  if path=="/api/admin/model-drafts/delete":self._api(lambda:DRAFTS.delete(self._require_admin()["username"],body));return
   if path.startswith("/api/admin/config/"):
    self._api(lambda:self._admin_config(path,body));return
   parts=[unquote(x) for x in path.split("/") if x]
@@ -87,7 +94,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   elif action=="close" and len(parts)==4:self._api(lambda:self.service.close_for(pid,principal,outcome or "CHIUSA",note,attachments))
   else:self._json({"error":"Endpoint inesistente"},404)
  def _assignment_groups(self):
-  if self._principal()["role"]!="MANAGER":raise PermissionError("Gruppi assegnatari riservati al manager")
+  if self._principal()["role"]!="MANAGER":raise PermissionError("Gruppi assegnatari riservati al supervisore")
   return [{"id":g["id"],"name":g["name"]} for g in CONFIG.list("groups") if g["role"]=="OPERATORE" and g.get("active",True)]
  def _assign_group(self,pid,code,group_id,principal):
   with CONFIG._lock:
@@ -104,12 +111,17 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
   return self._with_client_names(self.service.manager_practices_for(self._principal()))
  def _with_client_names(self,rows):
   clients={c["id"]:c["name"] for c in CONFIG.list("clients")}
+  groups={g["id"]:g for g in CONFIG.list("groups")}
   for row in rows:
+   for task in row.get("tasks",[]):
+    group=groups.get(task.get("assigned_group"),{})
+    task["assigned_group_name"]=group.get("name",task.get("assigned_group",""))
+    task["assigned_group_color"]=group.get("color","#edf1f5")
    row["client_name"]=clients.get(row["client_id"],row["client_id"])
   return rows
  def _configured_practices(self):
   with self.service._lock:
-   return [{"id":p.id,"client_id":p.client_id,"practice_type_code":p.practice_type_code,"period_start":p.period_start,"period_end":p.period_end,"due_date":p.due_date,"status":p.status.value} for p in reversed(list(self.service._practices.values()))]
+   return [{"id":p.id,"client_id":p.client_id,"practice_type_code":p.practice_type_code,"period_start":p.period_start,"period_end":p.period_end,"due_date":p.due_date,"status":p.status.value,"origin":p.origin,"economic_regime":p.economic_regime} for p in reversed(list(self.service._practices.values()))]
  def _admin_config(self,path,body):
   self._require_admin();parts=[unquote(x) for x in path.split("/") if x];entity=parts[3] if len(parts)>3 else ""
   if len(parts)==5 and parts[4]=="delete":
@@ -124,11 +136,12 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
    with CONFIG._lock, self.service._lock:
     if entity=="practice_types":
      old=next((m for m in CONFIG.list(entity) if m["id"]==body.get("id")),None)
+     if "_expected_model" in body and body.pop("_expected_model") != old:raise ValueError("Il modello pubblicato è cambiato dall’apertura della bozza. Conserva la bozza e confrontala con la versione attuale prima di pubblicare.")
      if old and body.get("code",old["code"])!=old["code"] and any(p.practice_type_code==old["code"] for p in self.service._practices.values()):raise ValueError("Il codice del modello è usato da pratiche esistenti e non può essere cambiato")
     return CONFIG.save(entity,body)
   raise KeyError(path)
  def _corrective_action(self,pid,principal,body):
-  if principal["role"]!="MANAGER":raise PermissionError("Solo un manager può definire una azione correttiva")
+  if principal["role"]!="MANAGER":raise PermissionError("Solo un supervisore può definire una azione correttiva")
   with self.service._lock:
    practice=self.service._find(pid);define_corrective_action(practice,principal["username"],UserRole.MANAGER,body.get("task_codes") or [],str(body.get("instruction") or ""));
    for code in body.get("task_codes") or []:

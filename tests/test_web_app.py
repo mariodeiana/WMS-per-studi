@@ -65,7 +65,7 @@ class WebAppTest(unittest.TestCase):
     def test_serves_manager_queue_task_and_validation_views(self):
         for path, marker in [
             ("/", b"Pratiche in esecuzione"),
-            (f"/practice.html?practice={DEMO_PRACTICE_ID}", b"Scheda Pratica Manager"),
+            (f"/practice.html?practice={DEMO_PRACTICE_ID}", b"Scheda Pratica Supervisore"),
             ("/queue.html", b"I miei compiti"),
             ("/task.html", b"Attivit\xc3\xa0 Operatore"),
             ("/validation.html", b"Validazione Pratica"),
@@ -161,7 +161,7 @@ class WebAppTest(unittest.TestCase):
         self.login("anna.operatore")
         _, body, _ = self.request("/api/work-queue?operator=anna.operatore")
         queue = json.loads(body)
-        self.assertEqual([item["code"] for item in queue], [f"LIPE-{i:02}" for i in range(1,8)])
+        self.assertEqual([item["code"] for item in queue], ["LIPE-01"])
         _, body, _ = self.request(f"/api/tasks/{DEMO_PRACTICE_ID}/LIPE-01?operator=anna.operatore")
         detail = json.loads(body)
         self.assertEqual(set(detail), {"practice", "task", "task_progress_evidence", "task_journal"})
@@ -190,8 +190,8 @@ class WebAppTest(unittest.TestCase):
         self.assertEqual(self.error(path+"/progress", "POST", {"note":"Tentativo"}),403)
         self.assertEqual(self.error(path+"/complete", "POST", {}),403)
 
-    def test_tasks_complete_out_of_definition_order(self):
-        plan = [("LIPE-07", "anna.operatore"), ("LIPE-02", "luca.operatore"), ("LIPE-05", "anna.operatore"), ("LIPE-04", "luca.operatore"), ("LIPE-01", "anna.operatore"), ("LIPE-06", "luca.operatore"), ("LIPE-03", "anna.operatore")]
+    def test_tasks_complete_in_graph_order(self):
+        plan = [(f"LIPE-{i:02}", "anna.operatore" if i % 2 else "luca.operatore") for i in range(1, 8)]
         for code, actor in plan:
             _, body, _ = self.complete(code, actor)
         practice = json.loads(body)
@@ -260,6 +260,7 @@ class WebAppTest(unittest.TestCase):
 
     def test_legacy_unique_evidence_link_still_works(self):
         self.complete("LIPE-01", "anna.operatore")
+        self.complete("LIPE-02", "anna.operatore")
         WMSRequestHandler.service.save_task_progress_for(DEMO_PRACTICE_ID, "LIPE-03", AUTH.principal(self.token), attachments=[{"filename":"legacy.txt", "content_type":"text/plain", "content_base64":"b2s="}])
         self.assertEqual(self.request("/api/evidence/E-0001")[1], b"ok")
 

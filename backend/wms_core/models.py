@@ -44,8 +44,10 @@ class Task:
     # Workflow configurabile: esiti ammessi e transizioni verso le attività successive.
     outcomes:tuple[str,...]=()
     transitions:dict[str,tuple[str,...]]=field(default_factory=dict)
-    # Indica se l'attività appartiene al percorso attualmente attivato.
+    # Nodo raggiunto: resta True anche dopo il completamento per conservare il percorso.
+    # L'eseguibilità richiede inoltre uno stato operativo e non completato.
     active:bool=True
+    graph_position:Optional[dict[str,float]]=None
     result_id:Optional[str]=None
     instructions:str=""
     work_note:str=""
@@ -54,7 +56,10 @@ class Task:
     reopen_reason:str=""
 @dataclass
 class Practice:
+    practice_type_id:Optional[str]=field(default=None, kw_only=True)
+    origin:Optional[str]=field(default=None, kw_only=True)
+    economic_regime:Optional[str]=field(default=None, kw_only=True)
     id:str; practice_type_code:str; client_id:str; period_start:str; period_end:str; due_date:str; requires_validation:bool=True; status:PracticeStatus=PracticeStatus.DA_FARE; tasks:list[Task]=field(default_factory=list); audit:list[AuditEvent]=field(default_factory=list); validated_by:Optional[str]=None; validated_at:Optional[datetime]=None; results:list[WorkResult]=field(default_factory=list); evidence:list[Evidence]=field(default_factory=list); validation_result_id:Optional[str]=None; closure_result_id:Optional[str]=None; nonconformities:list[NonConformity]=field(default_factory=list)
     def record(self,event_type:str,actor:str,**details:object)->None:self.audit.append(AuditEvent(event_type=event_type,actor=actor,details=details))
     @property
-    def required_tasks_complete(self)->bool:return all(task.status==TaskStatus.COMPLETATO for task in self.tasks if task.required and getattr(task,"active",True))
+    def required_tasks_complete(self)->bool:return all(task.status==TaskStatus.COMPLETATO for task in self.tasks if getattr(task,"active",True))

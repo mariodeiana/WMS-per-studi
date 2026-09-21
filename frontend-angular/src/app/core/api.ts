@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpContext, HttpContextToken } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 export function message(error: unknown): string {
@@ -12,9 +12,11 @@ export function message(error: unknown): string {
 }
 export const segment = (value: string) => encodeURIComponent(value);
 
+export const KEEP_EDITOR = new HttpContextToken<boolean>(()=>false);
+
 @Injectable({ providedIn: 'root' })
 export class Api {
   private http = inject(HttpClient);
   get<T>(path: string): Promise<T> { return firstValueFrom(this.http.get<T>('/api' + path)); }
-  post<T>(path: string, body: unknown = {}): Promise<T> { return firstValueFrom(this.http.post<T>('/api' + path, body)); }
+  post<T>(path: string, body: unknown = {}, keepEditor=false): Promise<T> { return firstValueFrom(this.http.post<T>('/api' + path, body, {context:new HttpContext().set(KEEP_EDITOR,keepEditor)})); }
 }

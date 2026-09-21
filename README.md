@@ -1,64 +1,54 @@
 # WMS per studi
 
-Work Management System indipendente dai gestionali applicativi, progettato per governare il metodo di lavoro degli studi professionali.
+Sistema per governare clienti, tipi pratica, pratiche, attività, assegnazioni,
+scadenze, risultati, documenti, validazioni e audit negli studi professionali.
+La pratica è l'oggetto centrale; il workflow mantiene un grafo orientato.
 
-## Principio fondante
+## Regola operativa
 
-Il WMS governa clienti, mandati, tipi di pratica, pratiche, task, scadenze, assegnazioni, documenti, workflow, validazioni e audit. I gestionali esterni (GIS, TeamSystem, Zucchetti, Sistemi, altri) sono integrati tramite connettori dedicati e non costituiscono una dipendenza strutturale del core.
+**Sviluppo, test, produzione, database, build e backup esclusivamente sul server
+ASC-OLB-WFO-01, 192.168.11.10.** Nessun ambiente o copia di lavoro locale.
+Leggere [AGENTS.md](AGENTS.md) prima di operare.
 
-## WMS Core v0.1
+| Ambiente | Indirizzo | Persistenza verificata il 22 settembre 2026 |
+|---|---|---|
+| DEV | http://192.168.11.10:8000 | Legacy |
+| TEST | http://192.168.11.10:8001 | PostgreSQL 17 dedicato |
+| PROD | http://192.168.11.10:8002 | Legacy |
+| Pannello di sistema | http://192.168.11.10:8004 | Stato, riavvii e procedure legacy |
 
-Caso pilota: `LIPE_TRIM`.
+Repository sul server: /opt/asc/wms/WMS-per-studi.
+Aggiornare TEST non aggiorna DEV o PROD.
 
-Obiettivo end-to-end:
+## Punto di ingresso al know-how
 
-`Template -> Pratica -> Task -> Workflow -> Validazione -> Audit`
+- [Indice della documentazione](docs/README.md)
+- [Stato attuale, decisioni e lavoro da completare](docs/stato-e-decisioni.md)
+- [Operazioni, rilascio e ripristino](docs/operazioni-server.md)
+- [PostgreSQL, migrazione e Repertorio](docs/database-repertorio.md)
+- [Workflow a grafo e designer](docs/workflow-grafo.md)
+- [Manuale operativo 1.4.1](docs/manuali/Manuale-WMS-1.4.1.md)
+- [Pannello di sistema: codice e limiti](operations/management/README.md)
 
-Oggetto centrale del sistema: **Pratica**.
+## Scheda Cliente
 
-## WMS v0.3: risultati di lavoro ed evidenze
+In TEST, scegliere **Amministratore → Configurazione → Clienti → Modifica**.
+La finestra contiene **Anagrafica**, **Dati fiscali**, **REPERTORIO** e **Pratiche**.
+Il Repertorio contiene i tipi compresi nel contratto. Le pratiche manuali fuori
+repertorio restano consentite e sono extra contratto. Origine e regime economico
+sono conservati al momento della creazione.
 
-La web app usa esclusivamente la libreria standard Python e applica le azioni al
-dominio `WMS Core` esistente. Lo stato è mantenuto in memoria per questa
-iterazione dimostrativa: riavviare il processo ripristina la pratica di esempio.
-La v0.3 evolve il flusso v0.2 senza sostituirlo: completamento task,
-validazione e chiusura producono un risultato strutturato (esito, nota, autore,
-ruolo e data/ora) e possono registrare allegati come metadati nel fascicolo
-pratica. Audit e fascicolo restano separati; Manager e Validatore possono
-consultare risultati ed evidenze, mentre l'operatore riceve il contesto delle
-attività precedenti.
+Il codice GIS è soltanto un riferimento esterno: nessuna integrazione è attiva.
 
-Requisito: **Python 3.10 o successivo**. Dalla radice del repository eseguire:
+## Struttura
 
-```bash
-python3 -m backend.wms_web.app
-```
+backend/wms_core contiene il dominio; backend/wms_web contiene API,
+autenticazione, configurazione e persistenza; backend/migrations contiene SQL.
+frontend-angular è l'interfaccia distribuita; frontend conserva quella precedente.
+tests e i file Angular *.spec.ts contengono le verifiche automatiche.
 
-Aprire quindi:
+Il Dockerfile costruisce Angular con Node 20 e il backend con Python 3.13,
+installando backend/requirements.txt. Build e test si eseguono sul server.
 
-- **http://127.0.0.1:8000/** per la Scheda Pratica Manager: assegnazioni,
-  avanzamento, autori dei completamenti, audit, riapertura e chiusura;
-- **http://127.0.0.1:8000/queue.html?operator=anna.operatore** per la Work Queue
-  di Anna;
-- **http://127.0.0.1:8000/queue.html?operator=luca.operatore** per la Work Queue
-  di Luca;
-- **http://127.0.0.1:8000/validation.html** per la vista del validatore.
-
-Le identità demo sono `anna.operatore` e `luca.operatore` (`OPERATORE`),
-`valeria.validatore` (`VALIDATORE`) e `marta.manager` (`MANAGER`). I sette task
-LIPE sono distribuiti tra i due operatori e sono indipendenti: l'ordine nel
-template è solo grafico; eventuali dipendenze sono dichiarate esplicitamente.
-La separazione dei compiti impedisce a chi ha completato un task di validare la
-stessa pratica. Per usare un'altra porta:
-
-```bash
-python3 -m backend.wms_web.app --port 8080
-```
-
-### Test
-
-Non sono necessarie dipendenze da installare. Dalla radice del repository:
-
-```bash
-python3 -m unittest discover -s tests -v
-```
+Il repository conserva codice e conoscenza tecnica. Credenziali, dati operativi,
+database, allegati e backup restano sul server.

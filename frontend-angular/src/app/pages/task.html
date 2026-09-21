@@ -5,7 +5,7 @@
   <div class="operator-detail">
     <section class="workspace-card operator-detail-header"><div class="operator-detail-title"><div><p class="eyebrow">{{ d.practice.type }} · {{ d.task.code }}</p><h1>{{ d.task.title }}</h1></div><span class="status" [attr.data-status]="d.task.status === 'COMPLETATO' ? 'COMPLETATA' : d.task.status">{{ statusLabel() }}</span></div>
       <div class="operator-detail-facts"><div><small>Cliente</small><strong>{{ d.practice.client_id }}</strong></div><div><small>Periodo</small><strong>{{ d.practice.period_start | date:'dd/MM/yyyy' }} – {{ d.practice.period_end | date:'dd/MM/yyyy' }}</strong></div><div><small>Scadenza attività</small><strong>{{ (d.task.due_date || d.practice.due_date) | date:'dd MMM yyyy' }}</strong></div><div><small>Dipendenze</small><strong>{{ d.task.depends_on.join(', ') || 'Nessuna' }}</strong></div></div>
-      @if(d.task.reopen_reason) { <p class="notice preline"><strong>Riaperta dal Manager:</strong> {{ d.task.reopen_reason }}</p> }
+      @if(d.task.reopen_reason) { <p class="notice preline"><strong>Riaperta dal Supervisore:</strong> {{ d.task.reopen_reason }}</p> }
       <div class="operator-instructions"><strong>Istruzioni operative</strong><p class="preline">{{ d.task.instructions || 'Nessuna istruzione definita.' }}</p></div>
     </section>
     <div class="operator-detail-grid" [class.read-only]="d.task.status === 'COMPLETATO' || !d.task.active">

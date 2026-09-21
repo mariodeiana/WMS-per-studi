@@ -23,7 +23,7 @@ class SessionRegistryTest(unittest.TestCase):
         self.assertTrue(token)
         self.assertEqual(session["user"]["username"], "mario.demo")
         self.assertEqual(session["active"]["role"], "MANAGER")
-        self.assertEqual(session["active"]["group"], "Manager")
+        self.assertEqual(session["active"]["group"], "Supervisore")
         self.assertEqual(len(session["memberships"]), 3)
 
     def test_user_can_switch_membership_without_new_login(self):

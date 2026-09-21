@@ -11,7 +11,7 @@ npm ci
 npm start -- --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json
 ```
 
-Aprire `http://192.168.1.23:4200`. Il proxy inoltra `/api` al solo backend DEV
+Aprire `http://192.168.11.10:4200`. Il proxy inoltra `/api` al solo backend DEV
 sulla porta 8000. Non cambiare il proxy verso TEST (8001) o PROD (8002).
 
 ```sh
@@ -22,8 +22,11 @@ npm test -- --watch=false --browsers=ChromeHeadless
 Senza Chrome installato sul server: `npm test -- --watch=false --no-browsers`,
 poi aprire la porta Karma 9876 con un browser tramite tunnel SSH.
 
-La navigazione dipende dal ruolo attivo: Manager, Operatore, Validatore,
+La navigazione dipende dal ruolo attivo: Supervisore, Operatore, Validatore,
 Amministratore. Il cambio appartenenza è disponibile nella barra superiore.
 Le sessioni usano il cookie HttpOnly del backend, senza token nel localStorage.
 
 Copertura, API e procedura di verifica isolata: [migrazione Angular](../docs/angular-migration.md).
+
+Il grafo interattivo e il designer dei Tipi pratica usano Foblex Flow.
+Istruzioni: [workflow a grafo](../docs/workflow-grafo.md#grafo-interattivo-angular).

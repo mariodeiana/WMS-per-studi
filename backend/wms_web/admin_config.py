@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import colorsys
 from pathlib import Path
 from threading import RLock
 from backend.wms_core.templates import PRACTICE_TEMPLATES
@@ -10,10 +11,22 @@ from backend.wms_web.passwords import hash_password
 ROLES = ["AMMINISTRATORE", "DECISORE", "MANAGER", "VALIDATORE", "OPERATORE"]
 ENTITIES = {"users", "groups", "memberships", "assignment_policies", "practice_types", "clients"}
 
+def next_group_color(groups):
+    used = {g.get("color") for g in groups}
+    index = 0
+    while True:
+        hue = (index * 0.618033988749895) % 1
+        rgb = colorsys.hls_to_rgb(hue, 0.86, 0.65)
+        color = "#" + "".join(f"{round(c * 255):02x}" for c in rgb)
+        if color not in used:
+            return color
+        index += 1
+
+
 DEFAULT_DATA = {
     "groups": [
         {"id": "amministratori-wms", "name": "Amministratori WMS", "role": "AMMINISTRATORE", "active": True},
-        {"id": "manager", "name": "Manager", "role": "MANAGER", "active": True},
+        {"id": "manager", "name": "Supervisore", "role": "MANAGER", "active": True},
         {"id": "contabili", "name": "Contabili", "role": "OPERATORE", "active": True},
         {"id": "segreteria", "name": "Segreteria", "role": "OPERATORE", "active": True},
         {"id": "validatori-contabili", "name": "Validatori contabili", "role": "VALIDATORE", "active": True},
@@ -25,7 +38,7 @@ DEFAULT_DATA = {
         {"id": "sara.demo", "username": "sara.demo", "display_name": "Sara Demo", "active": True, "default_membership_id": "sara-segreteria"},
     ],
     "memberships": [
-        {"id": "mario-manager", "user_id": "mario.demo", "group_id": "manager", "label": "Manager", "active": True},
+        {"id": "mario-manager", "user_id": "mario.demo", "group_id": "manager", "label": "Supervisore", "active": True},
         {"id": "mario-contabili", "user_id": "mario.demo", "group_id": "contabili", "label": "Operatore · Contabili", "active": True},
         {"id": "mario-amministratore", "user_id": "mario.demo", "group_id": "amministratori-wms", "label": "Amministratore WMS", "active": True},
         {"id": "valeria-validatori", "user_id": "valeria.demo", "group_id": "validatori-contabili", "label": "Validatore · Contabili", "active": True},
@@ -43,11 +56,16 @@ DEFAULT_DATA = {
 
 
 class AdminConfigStore:
-    def __init__(self, path: Path, seed_demo: bool = True):
+    def __init__(self, path: Path, seed_demo: bool = True, database=None):
+        self.database = database
+        self._importing = True
         self.path = path
         self._lock = RLock()
         self._seed_demo = seed_demo
-        self._data = self._load()
+        stored = database.load_config() if database else None
+        self._data = self._load() if stored is None else self._upgrade(stored)
+        self._importing = False
+        if database: self._persist()
 
     def _load(self):
         if self.path.exists():
@@ -59,8 +77,8 @@ class AdminConfigStore:
                 if self._seed_demo:
                     self._seed_demo_passwords(data)
                 return data
-            except (OSError, json.JSONDecodeError):
-                pass
+            except (OSError, json.JSONDecodeError) as error:
+                raise RuntimeError("Configurazione illeggibile: importazione interrotta senza sostituire i dati") from error
         if self._seed_demo:
             data = json.loads(json.dumps(DEFAULT_DATA))
             data = self._upgrade(data)
@@ -96,6 +114,32 @@ class AdminConfigStore:
                     row.setdefault("requires_validation", True)
             data["catalog_version"] = 1
             self._persist(data)
+        if data.get("workflow_version", 0) < 1:
+            for row in data["practice_types"]:
+                tasks = row.get("tasks", [])
+                if row.get("code") in {*PRACTICE_TEMPLATES, "LIPE"} and not any(t.get("transitions") or t.get("depends_on") for t in tasks):
+                    for index, task in enumerate(tasks):
+                        task["transitions"] = {"*": [tasks[index + 1]["code"]] if index + 1 < len(tasks) else ["@END"]}
+                for task in tasks:
+                    task.setdefault("outcomes", [])
+            for entity, field in (("groups", "name"), ("memberships", "label")):
+                for row in data[entity]:
+                    if row.get(field) == "Manager": row[field] = "Supervisore"
+            data["workflow_version"] = 1
+            self._persist(data)
+        if data.get("initial_nodes_version", 0) < 1:
+            from backend.wms_web.config_models import model_graph_issues
+            for row in data["practice_types"]:
+                model_graph_issues(row.get("tasks", []))
+            data["initial_nodes_version"] = 1
+            self._persist(data)
+        changed = False
+        for group in data["groups"]:
+            if not group.get("color"):
+                group["color"] = next_group_color(data["groups"])
+                changed = True
+        if changed:
+            self._persist(data)
         return data
 
     def sync_clients(self, client_ids, client_names=None):
@@ -117,6 +161,9 @@ class AdminConfigStore:
 
     def _persist(self, data=None):
         data = data if data is not None else self._data
+        if self.database:
+            if not self._importing: self.database.save_config(data)
+            return
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         temporary.replace(self.path)
@@ -158,19 +205,25 @@ class AdminConfigStore:
         with self._lock:
             previous = next((r for r in self._data[entity] if r["id"] == item.get("id")), {})
             merged = {**previous, **item}
+            if entity == "groups":
+                merged["color"] = previous.get("color") or next_group_color(self._data["groups"])
             if entity == "users":
                 if previous.get("password_hash"):
                     merged["password_hash"] = previous["password_hash"]
                 else:
                     merged.pop("password_hash", None)
             clean = self._validate(entity, merged)
+            backup = json.loads(json.dumps(self._data))
             rows = self._data[entity]
             index = next((i for i, row in enumerate(rows) if row["id"] == clean["id"]), None)
             if index is None:
                 rows.append(clean)
             else:
                 rows[index] = clean
-            self._persist()
+            try: self._persist()
+            except Exception:
+                self._data = backup
+                raise
             result = json.loads(json.dumps(clean))
             if entity == "users":
                 result.pop("password_hash", None)
@@ -185,11 +238,17 @@ class AdminConfigStore:
                 raise ValueError("L'utente possiede appartenenze: disattivarlo invece di eliminarlo")
             if entity == "groups" and any(t.get("assigned_group") == item_id for m in self._data["practice_types"] for t in m.get("tasks", [])):
                 raise ValueError("Il gruppo è utilizzato da un modello di pratica")
+            if entity == "practice_types" and any(item_id in c.get("repertoire", []) for c in self._data["clients"]):
+                raise ValueError("Tipo pratica incluso in un repertorio: rimuoverlo dal repertorio o disattivarlo")
+            backup = json.loads(json.dumps(self._data))
             before = len(self._data[entity])
             self._data[entity] = [row for row in self._data[entity] if row["id"] != item_id]
             if len(self._data[entity]) == before:
                 raise KeyError(item_id)
-            self._persist()
+            try: self._persist()
+            except Exception:
+                self._data = backup
+                raise
             return {"ok": True, "id": item_id}
 
     @staticmethod
@@ -229,6 +288,19 @@ class AdminConfigStore:
             if not str(item.get("strategy") or "").strip(): raise ValueError("La strategia è obbligatoria")
         elif entity == "clients":
             if not str(item.get("name") or "").strip(): raise ValueError("Il nome del cliente è obbligatorio")
+            for key in ("name", "tax_code", "vat_number", "gis_company_code", "accounting_regime", "vat_settlement_type", "notes"):
+                value = item.get(key, "")
+                if not isinstance(value, str) or len(value) > (10000 if key == "notes" else 250):
+                    raise ValueError(f"Campo cliente non valido: {key}")
+                item[key] = value.strip()
+            repertoire = item.get("repertoire", [])
+            if not isinstance(repertoire, list) or not all(isinstance(v, str) for v in repertoire):
+                raise ValueError("Repertorio non valido")
+            if len(repertoire) != len(set(repertoire)):
+                raise ValueError("Tipi pratica duplicati nel repertorio")
+            if set(repertoire) - {m["id"] for m in self._data["practice_types"]}:
+                raise ValueError("Tipo pratica inesistente nel repertorio")
+            item["repertoire"] = sorted(repertoire)
         elif entity == "practice_types":
             if not str(item.get("code") or "").strip(): raise ValueError("Il codice pratica è obbligatorio")
             if not str(item.get("name") or "").strip(): raise ValueError("Il nome del tipo pratica è obbligatorio")

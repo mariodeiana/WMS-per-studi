@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 from backend.wms_core.models import UserRole
-from backend.wms_core.workflow import close_practice, complete_task, reopen_task, save_task_progress, validate_practice
+from backend.wms_core.workflow import task_executable, WorkflowError, close_practice, complete_task, reopen_task, save_task_progress, validate_practice
 from backend.wms_web.service import RECENT_COMPLETED_HOURS, PracticeService, _date, _evidence, _result, _summary, _task, serialize_practice, deadline_urgency
 
 
@@ -68,7 +69,7 @@ class OrganizationalPracticeService(PracticeService):
             return data
 
     def manager_practices_for(self, principal):
-        self._require_role(principal, UserRole.MANAGER, "La lista pratiche è riservata al manager")
+        self._require_role(principal, UserRole.MANAGER, "La lista pratiche è riservata al supervisore")
         with self._lock:
             return sorted([_summary(p) for p in self._practices.values() if p.status.value != "CHIUSA"], key=lambda r:(r["urgency_sort"],r["due_date"],r["id"]))
 
@@ -101,6 +102,7 @@ class OrganizationalPracticeService(PracticeService):
                 results={r.id:r for r in practice.results}
                 for task in practice.tasks:
                     if task.assigned_group != group:continue
+                    if task.status.value != "COMPLETATO" and not task_executable(practice,task):continue
                     row={"practice_id":practice.id,"practice_type_code":practice.practice_type_code,"client_id":practice.client_id,"due_date":practice.due_date,**self._serialize_task(task)}
                     row["due_date"] = getattr(task, "due_date", None) or practice.due_date
                     row["urgency"], row["urgency_sort"] = deadline_urgency(row["due_date"])
@@ -142,6 +144,7 @@ class OrganizationalPracticeService(PracticeService):
 
     def _claim(self, task, principal, practice):
         if task.assigned_group != principal["group_id"]:raise PermissionError("Il task appartiene a un altro gruppo")
+        if not task_executable(practice,task):raise WorkflowError("Il task non è attivo ed eseguibile")
         actor=principal["username"]
         if task.claimed_by and task.claimed_by!=actor:raise PermissionError("Il task è già preso in carico da un altro operatore")
         if not task.claimed_by:
@@ -158,10 +161,19 @@ class OrganizationalPracticeService(PracticeService):
     def complete_task_for(self, practice_id, task_code, principal, outcome="COMPLETATO", note="", attachments=None):
         self._require_role(principal,UserRole.OPERATORE,"Solo un operatore può completare i task")
         with self._lock:
-            p=self._find(practice_id);t=self._find_task(p,task_code);actor=self._claim(t,principal,p);complete_task(p,task_code,actor,UserRole.OPERATORE,outcome,note,attachments);self._persist();return self.get_for(practice_id,principal)
+            p=self._find(practice_id)
+            before=deepcopy(p)
+            try:
+                t=self._find_task(p,task_code);actor=self._claim(t,principal,p)
+                complete_task(p,task_code,actor,UserRole.OPERATORE,outcome,note,attachments)
+                self._persist()
+            except Exception:
+                self._practices[practice_id]=before
+                raise
+            return self.get_for(practice_id,principal)
 
     def reopen_task_for(self, practice_id, task_code, principal, reason=""):
-        self._require_role(principal,UserRole.MANAGER,"Solo un manager può riaprire i task")
+        self._require_role(principal,UserRole.MANAGER,"Solo un supervisore può riaprire i task")
         with self._lock:
             p=self._find(practice_id);t=self._find_task(p,task_code);reopen_task(p,task_code,principal["username"],UserRole.MANAGER,reason);t.claimed_by=None;t.assignee=None;self._persist();return self.get_for(practice_id,principal)
 
@@ -171,11 +183,11 @@ class OrganizationalPracticeService(PracticeService):
             p=self._find(practice_id);validate_practice(p,principal["username"],UserRole.VALIDATORE,outcome,note,attachments);self._persist();return self.get_for(practice_id,principal)
 
     def close_for(self, practice_id, principal, outcome="CHIUSA", note="", attachments=None):
-        self._require_role(principal,UserRole.MANAGER,"Solo un manager può chiudere la pratica")
+        self._require_role(principal,UserRole.MANAGER,"Solo un supervisore può chiudere la pratica")
         with self._lock:
             p=self._find(practice_id);close_practice(p,principal["username"],UserRole.MANAGER,outcome,note,attachments);self._persist();return self.get_for(practice_id,principal)
 
     def assign_group_for(self, practice_id, task_code, group_id, principal):
-        self._require_role(principal,UserRole.MANAGER,"Solo un manager può modificare il gruppo assegnatario")
+        self._require_role(principal,UserRole.MANAGER,"Solo un supervisore può modificare il gruppo assegnatario")
         with self._lock:
             p=self._find(practice_id);t=self._find_task(p,task_code);previous=t.assigned_group;t.assigned_group=group_id;t.claimed_by=None;t.assignee=None;p.record("TASK_GROUP_ASSIGNED",principal["username"],task_code=t.code,previous_group=previous,assigned_group=group_id);self._persist();return self.get_for(practice_id,principal)

@@ -47,13 +47,13 @@ function displayValue(field,value) {
   if(field==='user_id')return lookup('users',value,'display_name');
   if(field==='group_id')return lookup('groups',value);
   if(field==='client_id')return lookup('clients',value);
-  return value??'';
+  return value==='MANAGER'?'Supervisore':value??'';
 }
 function renderTable() {
   const meta=ENTITY_META[currentEntity],practices=currentEntity==='practices';
   $('cfg-title').textContent=meta.title;
   $('cfg-new').textContent=practices?'Nuova pratica':'Nuovo';
-  $('cfg-help').textContent={clients:'Anagrafica dei clienti. I codici importati dalle pratiche esistenti possono essere completati con i dati anagrafici.',practice_types:'Modelli di pratica: configura attività, gruppi, esiti, transizioni e scadenze con Modifica. Le modifiche si applicano alle nuove pratiche.',practices:'Crea una pratica scegliendo cliente, modello, periodo e scadenza. Le attività vengono copiate dal modello e compaiono nelle code operative.'}[currentEntity]||'';
+  $('cfg-help').textContent={clients:'Anagrafica dei clienti. I codici importati dalle pratiche esistenti possono essere completati con i dati anagrafici.',practice_types:'Modelli di pratica: configura attività, gruppi, esiti, transizioni e scadenze con Modifica. Le modifiche si applicano alle nuove pratiche.',practices:'Crea una pratica scegliendo cliente, modello, periodo e scadenza. Il grafo viene copiato dal modello; solo le attività attivate compaiono nelle code operative.'}[currentEntity]||'';
   $('cfg-error').textContent='';
   const rows=practices?practiceRows:(configData[currentEntity]||[]);
   const fields=currentEntity==='practice_types'?[...meta.fields,['task_count','Attività']]:meta.fields;
@@ -97,7 +97,7 @@ function openEditor(row={}) {
   setupDialog((row.id?'Modifica · ':'Nuovo · ')+meta.title,isModel);
   let html='<div class="cfg-fields">';
   for(const [name,label] of meta.fields) {
-    if(editorEntity==='groups'&&name==='role')html+=selectHtml(name,label,configData.roles.map(x=>({value:x,label:x})),row[name]||'OPERATORE');
+    if(editorEntity==='groups'&&name==='role')html+=selectHtml(name,label,configData.roles.map(x=>({value:x,label:x==='MANAGER'?'Supervisore':x})),row[name]||'OPERATORE');
     else if(editorEntity==='memberships'&&['user_id','group_id'].includes(name)) {
       const entity=name==='user_id'?'users':'groups';
       html+=selectHtml(name,label,configData[entity].map(x=>({value:x.id,label:x.name||x.display_name})),row[name]||'');
@@ -141,7 +141,7 @@ function normalizeTaskWorkflow(task) {
     if(!Array.isArray(task.transitions[outcome]))task.transitions[outcome]=[];
   }
   for(const outcome of Object.keys(task.transitions)) {
-    if(!task.outcomes.includes(outcome))delete task.transitions[outcome];
+    if(outcome!=='*'&&!task.outcomes.includes(outcome))task.outcomes.push(outcome);
   }
   return task;
 }
@@ -187,7 +187,7 @@ function captureTasks() {
       const outcome=row.querySelector('[data-outcome-name]').value.trim();
       if(outcome)transitions[outcome]=[...row.querySelectorAll('[data-transition]:checked')].map(e=>e.value);
     });
-    taskDraft[i]={...task,code:val('code').trim(),title:val('title'),instructions:val('instructions'),assigned_group:val('assigned_group'),days_before_due:Number(val('days_before_due')),required:el.querySelector('[data-field="required"]').checked,outcomes,transitions};
+    taskDraft[i]={...task,code:val('code').trim(),title:val('title'),instructions:val('instructions'),assigned_group:val('assigned_group'),days_before_due:Number(val('days_before_due')),required:true,depends_on:[],outcomes:outcomes.filter(o=>o!=='*'),transitions};
   });
 }
 function renderTasks() {
@@ -200,13 +200,13 @@ function renderTasks() {
     <label>Gruppo responsabile<select aria-label="Gruppo responsabile" data-field="assigned_group" required><option value="">Scegli gruppo</option>${groups.map(g=>`<option value="${escapeAttr(g.id)}" ${g.id===t.assigned_group?'selected':''}>${escapeHtml(g.name)}${g.active===false?' (disattivato)':''}</option>`).join('')}</select></label>
     <label>Giorni prima della scadenza<input data-field="days_before_due" type="number" min="0" max="3650" step="1" value="${t.days_before_due||0}" required></label>
     <label class="cfg-wide">Istruzioni operative<textarea data-field="instructions">${escapeHtml(t.instructions)}</textarea></label>
-    <label class="check"><input data-field="required" type="checkbox" ${t.required!==false?'checked':''}>Obbligatoria</label>
+    <p>Ogni attività raggiunta deve essere completata.</p>
     <div class="cfg-wide task-workflow"><div class="task-workflow-head"><strong>Esiti e attività successive</strong><button type="button" data-add-outcome>Aggiungi esito</button></div>
       <p class="model-hint">Al completamento l’operatore sceglie un esito; il WMS attiva le attività successive associate.</p>
-      <div class="task-outcomes">${normalizeTaskWorkflow(t).outcomes.map(outcome=>`<div class="task-outcome" data-outcome="${escapeAttr(outcome)}">
-        <div class="task-outcome-head"><label>Esito<input data-outcome-name value="${escapeAttr(outcome)}" required></label><button type="button" data-remove-outcome>Rimuovi esito</button></div>
-        <div class="task-next"><span>Attività successive:</span>${taskDraft.filter((d,j)=>j!==i&&d.code).map(d=>`<label class="check"><input data-transition type="checkbox" value="${escapeAttr(d.code)}" ${(t.transitions[outcome]||[]).includes(d.code)?'checked':''}>${escapeHtml(d.code)} — ${escapeHtml(d.title)}</label>`).join('')||'<small>Nessun’altra attività con codice disponibile.</small>'}</div>
-      </div>`).join('')||'<small>Nessun esito configurato: l’attività mantiene il comportamento tradizionale.</small>'}</div>
+      <div class="task-outcomes">${Object.keys(normalizeTaskWorkflow(t).transitions).map(outcome=>`<div class="task-outcome" data-outcome="${escapeAttr(outcome)}">
+        <div class="task-outcome-head"><label>Esito (* = qualsiasi esito)<input data-outcome-name value="${escapeAttr(outcome)}" required></label><button type="button" data-remove-outcome>Rimuovi esito</button></div>
+        <div class="task-next"><span>Attività successive:</span><label class="check"><input data-transition type="checkbox" value="@END" ${(t.transitions[outcome]||[]).includes('@END')?'checked':''}>Fine ramo</label>${taskDraft.filter((d,j)=>j!==i&&d.code).map(d=>`<label class="check"><input data-transition type="checkbox" value="${escapeAttr(d.code)}" ${(t.transitions[outcome]||[]).includes(d.code)?'checked':''}>${escapeHtml(d.code)} — ${escapeHtml(d.title)}</label>`).join('')||'<small>Nessun’altra attività con codice disponibile.</small>'}</div>
+      </div>`).join('')||'<small>Nessuna transizione: il completamento termina questo ramo.</small>'}</div>
     </div>
     </div><div class="task-controls"><button type="button" data-up ${i===0?'disabled':''}>Sposta su</button><button type="button" data-down ${i===taskDraft.length-1?'disabled':''}>Sposta giù</button><button type="button" data-remove>Rimuovi attività</button></div></fieldset></details>`).join('');
   document.querySelectorAll('.task-detail').forEach(el=>{el.ontoggle=()=>{
@@ -226,7 +226,7 @@ function renderTasks() {
       const old=taskDraft[i].code;captureTasks();const next=taskDraft[i].code;
       if(old)taskDraft.forEach(t=>{
         normalizeTaskWorkflow(t);
-        for(const outcome of t.outcomes)t.transitions[outcome]=t.transitions[outcome].map(d=>d===old?next:d);
+        for(const outcome of Object.keys(t.transitions))t.transitions[outcome]=t.transitions[outcome].map(d=>d===old?next:d);
       });
       renderTasks();
     };
@@ -285,7 +285,7 @@ function openNewPractice() {
 async function showPractice(row) {
   try {
     const p=await api('/api/practices/'+encodeURIComponent(row.id));setupDialog('Attività · '+row.id,true);
-    $('cfg-form').innerHTML=`<p>Cliente: ${escapeHtml(lookup('clients',p.client_id))} · Scadenza: ${escapeHtml(p.due_date)}</p><div class="cfg-table-wrap"><table class="cfg-table cfg-activity-table"><colgroup><col class="activity-name"><col class="activity-group"><col class="activity-date"><col class="activity-deps"><col class="activity-status"></colgroup><thead><tr><th>Attività</th><th>Gruppo</th><th>Scadenza</th><th>Percorso</th><th>Stato</th></tr></thead><tbody>${p.tasks.map(t=>`<tr><td>${escapeHtml(t.code)} — ${escapeHtml(t.title)}<p>${escapeHtml(t.instructions)}</p></td><td>${escapeHtml(lookup('groups',t.assigned_group))}</td><td>${escapeHtml(t.due_date||p.due_date)}</td><td>${escapeHtml(Object.entries(t.transitions||{}).map(([outcome,destinations])=>outcome+' → '+(destinations.join(', ')||'Fine')).join(' · ')||'Fine')}</td><td><span class="activity-status-label">${escapeHtml(({DA_FARE:"Da fare",IN_LAVORAZIONE:"In lavorazione",COMPLETATO:"Completato"})[t.status]||t.status)}</span></td></tr>`).join('')}</tbody></table></div><button type="button" id="cfg-close">Chiudi</button>`;
+    $('cfg-form').innerHTML=`<p>Cliente: ${escapeHtml(lookup('clients',p.client_id))} · Scadenza: ${escapeHtml(p.due_date)}</p><div class="cfg-table-wrap"><table class="cfg-table cfg-activity-table"><colgroup><col class="activity-name"><col class="activity-group"><col class="activity-date"><col class="activity-deps"><col class="activity-status"></colgroup><thead><tr><th>Attività</th><th>Gruppo</th><th>Scadenza</th><th>Percorso</th><th>Stato</th></tr></thead><tbody>${p.tasks.map(t=>`<tr><td>${escapeHtml(t.code)} — ${escapeHtml(t.title)}<p>${escapeHtml(t.instructions)}</p></td><td>${escapeHtml(lookup('groups',t.assigned_group))}</td><td>${escapeHtml(t.due_date||p.due_date)}</td><td>${escapeHtml(Object.entries(t.transitions||{}).map(([outcome,destinations])=>outcome+' → '+(destinations.join(', ')||'Fine')).join(' · ')||'Fine')}</td><td><span class="activity-status-label">${escapeHtml(t.active===false?'Non raggiunta':({DA_FARE:"Da fare",IN_LAVORAZIONE:"In lavorazione",COMPLETATO:"Completato"})[t.status]||t.status)}</span></td></tr>`).join('')}</tbody></table></div><button type="button" id="cfg-close">Chiudi</button>`;
     $('cfg-close').onclick=()=>$('cfg-dialog').close();$('cfg-dialog').showModal();
   }catch(e){$('cfg-error').textContent=e.message;}
 }

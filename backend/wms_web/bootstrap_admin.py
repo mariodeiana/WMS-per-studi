@@ -7,6 +7,7 @@ from pathlib import Path
 
 from backend.wms_web.admin_config import AdminConfigStore
 from backend.wms_web.passwords import hash_password
+from backend.wms_web.database import Database
 
 
 ADMIN_GROUP_ID = "amministratori-wms"
@@ -14,7 +15,7 @@ ADMIN_GROUP_ID = "amministratori-wms"
 
 def bootstrap(data_dir: Path, username: str, display_name: str):
     data_dir.mkdir(parents=True, exist_ok=True)
-    config = AdminConfigStore(data_dir / ".wms-config.json", seed_demo=False)
+    config = AdminConfigStore(data_dir / ".wms-config.json", seed_demo=False, database=Database(os.environ["WMS_DATABASE_URL"]) if os.environ.get("WMS_DATABASE_URL") else None)
 
     username = username.strip()
     display_name = display_name.strip()

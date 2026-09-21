@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.wms_core.workflow import task_executable
 
 import base64
 import pickle
@@ -138,10 +139,10 @@ def _stage_demo_practice(practice: Practice, stage: int, sequence: int) -> None:
             "valeria.validatore",
             UserRole.VALIDATORE,
             outcome="NON_VALIDATA",
-            note="Quadrature non sufficientemente documentate: verifica richiesta al manager.",
+            note="Quadrature non sufficientemente documentate: verifica richiesta al supervisore.",
             attachments=_demo_attachment(
                 f"{practice.id}-rilievo-validazione.txt",
-                "Rilievo del validatore: la pratica richiede intervento manageriale.",
+                "Rilievo del validatore: la pratica richiede intervento del supervisore.",
             ),
         )
         return
@@ -196,6 +197,7 @@ def _task(task):
         "required": task.required,
         "status": task.status.value,
         "active": getattr(task, "active", True),
+        "graph_position": getattr(task, "graph_position", None),
         "assignee": task.assignee,
         "completed_by": task.completed_by,
         "depends_on": list(task.depends_on),
@@ -256,6 +258,9 @@ def serialize_practice(practice):
         "id": practice.id,
         "practice_type_code": practice.practice_type_code,
         "client_id": practice.client_id,
+        "origin": practice.origin,
+        "economic_regime": practice.economic_regime,
+        "practice_type_id": practice.practice_type_id,
         "period_start": practice.period_start,
         "period_end": practice.period_end,
         "due_date": practice.due_date,
@@ -272,7 +277,7 @@ def serialize_practice(practice):
         } for nc in getattr(practice, "nonconformities", [])],
         "status": practice.status.value,
         "tasks": [_task(task) for task in practice.tasks],
-        "progress": {"completed": completed, "total": len(practice.tasks)},
+        "progress": {"completed": completed, "total": sum(getattr(t,"active",True) for t in practice.tasks)},
         "audit": [_event(event) for event in reversed(practice.audit)],
         "validated_by": practice.validated_by,
         "validated_at": _date(practice.validated_at),
@@ -299,7 +304,7 @@ def deadline_urgency(due_date):
 
 
 def _summary(practice):
-    total = len(practice.tasks)
+    total = sum(getattr(t,"active",True) for t in practice.tasks)
     completed = sum(task.status.value == "COMPLETATO" for task in practice.tasks)
     reopened = sum(bool(task.reopen_reason) and task.status.value != "COMPLETATO" for task in practice.tasks)
     in_progress = sum(task.status.value == "IN_LAVORAZIONE" for task in practice.tasks)
@@ -320,11 +325,15 @@ def _summary(practice):
         "id": practice.id,
         "practice_type_code": practice.practice_type_code,
         "client_id": practice.client_id,
+        "origin": practice.origin,
+        "economic_regime": practice.economic_regime,
+        "practice_type_id": practice.practice_type_id,
         "period_start": practice.period_start,
         "period_end": practice.period_end,
         "due_date": practice.due_date,
         "status": practice.status.value,
         "progress": {"completed": completed, "total": total, "percent": round(100 * completed / total) if total else 0},
+        "active_tasks": [task.code for task in practice.tasks if task_executable(practice,task)],
         "situation": situation,
         "urgency": urgency,
         "urgency_sort": days,
@@ -332,16 +341,20 @@ def _summary(practice):
 
 
 class PracticeService:
-    def __init__(self, state_path=None, rich_demo: bool = False, seed_demo: bool = True):
+    def __init__(self, state_path=None, rich_demo: bool = False, seed_demo: bool = True, database=None):
+        self.database = database
         self._lock = RLock()
         self._state_path = Path(state_path) if state_path else None
-        if self._state_path and self._state_path.exists():
+        stored = database.load_practices() if database else None
+        if stored is not None:
+            self._practices = stored
+        elif self._state_path and self._state_path.exists():
             self._practices = self._load_state()
         elif seed_demo:
             self._practices = {DEMO_PRACTICE_ID: build_demo_practice()}
         else:
             self._practices = {}
-        if rich_demo and seed_demo:
+        if rich_demo and seed_demo and stored is None:
             changed = False
             for practice_id, practice in build_rich_demo_practices().items():
                 if practice_id not in self._practices:
@@ -349,6 +362,8 @@ class PracticeService:
                     changed = True
             if changed:
                 self._persist()
+
+        if database: self._persist()
 
     def _load_state(self):
         try:
@@ -361,6 +376,9 @@ class PracticeService:
             raise RuntimeError(f"Impossibile caricare lo stato demo da {self._state_path}: {error}") from error
 
     def _persist(self):
+        if self.database:
+            self.database.save_practices(self._practices)
+            return
         if not self._state_path:
             return
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -381,7 +399,7 @@ class PracticeService:
 
     def manager_practices(self, actor):
         if self._role(actor) != UserRole.MANAGER:
-            raise PermissionError("La lista pratiche è riservata al manager")
+            raise PermissionError("La lista pratiche è riservata al supervisore")
         with self._lock:
             return sorted(
                 [_summary(practice) for practice in self._practices.values() if practice.status.value != "CHIUSA"],
@@ -443,10 +461,15 @@ class PracticeService:
                 for task in practice.tasks:
                     if task.assignee != operator:
                         continue
+                    if task.status.value != "COMPLETATO" and not task_executable(practice,task):
+                        continue
                     row = {
                         "practice_id": practice.id,
                         "practice_type_code": practice.practice_type_code,
                         "client_id": practice.client_id,
+        "origin": practice.origin,
+        "economic_regime": practice.economic_regime,
+        "practice_type_id": practice.practice_type_id,
                         "due_date": practice.due_date,
                         **_task(task),
                     }
@@ -494,6 +517,9 @@ class PracticeService:
                     "id": practice.id,
                     "type": practice.practice_type_code,
                     "client_id": practice.client_id,
+        "origin": practice.origin,
+        "economic_regime": practice.economic_regime,
+        "practice_type_id": practice.practice_type_id,
                     "period_start": practice.period_start,
                     "period_end": practice.period_end,
                     "due_date": practice.due_date,
