@@ -2,6 +2,8 @@ import json
 import shutil
 import subprocess
 import time
+from html import escape
+from urllib.request import urlopen
 from threading import Lock
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +34,23 @@ def docker(*args):
     )
 
 
+def application_revision(container, port):
+    try:
+        with urlopen(f'http://127.0.0.1:{port}/api/runtime', timeout=2) as response:
+            revision = json.load(response).get('revision')
+            if revision and revision not in ('non disponibile','non-disponibile'):
+                return str(revision)
+    except (OSError, ValueError):
+        pass
+    try:
+        image = docker('inspect', '-f', '{{.Image}}', container)
+        if image.returncode == 0 and image.stdout.strip():
+            return 'immagine ' + image.stdout.strip().removeprefix('sha256:')[:12]
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return 'non disponibile'
+
+
 def status():
     result = {}
     for env, (container, port) in CONTAINERS.items():
@@ -39,6 +58,7 @@ def status():
         result[env] = {
             "container": container,
             "port": port,
+            "revision": application_revision(container, port),
             "status": p.stdout.strip() if p.returncode == 0 else "not-found"
         }
     return result
@@ -268,7 +288,8 @@ class Handler(BaseHTTPRequestHandler):
               <h2>{env}</h2>
               <div class="status">{info['status'].upper()}</div>
               <p>Porta {info['port']}</p>
-              <button onclick="restart('{env}')">Riavvia {env}</button>
+              <p><a href="http://192.168.11.10:{info['port']}" target="_blank" rel="noopener">Apri {env} · Rev. {escape(info['revision'])}</a></p>
+              <button onclick="restart('{env}')">Riavvia {env} · Rev. {escape(info['revision'])}</button>
               {extra}
             </section>
             """)

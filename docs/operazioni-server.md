@@ -23,7 +23,7 @@ Non stampare o copiare i valori nei log o in GitHub.
 
 ## Build e aggiornamento TEST
 
-    docker build -t asc-wms:test-NOME-RILASCIO .
+    docker build --build-arg WMS_REVISION="$(git rev-parse --short HEAD)" -t asc-wms:test-NOME-RILASCIO .
 
 Usare un tag nuovo e aggiornare l'immagine in compose.database-test.yaml.
 Conservare tag precedente e backup. Il rilascio del 22 settembre usa
@@ -94,3 +94,9 @@ Angular con l'immagine strumenti già presente sul server:
 Per ricostruire strumenti equivalenti servono Node compatibile con Angular 20,
 Chromium e lanciatore headless adatto al container. L'immagine strumenti è
 distinta da quella applicativa.
+
+
+La revisione è incorporata nell'immagine tramite WMS_REVISION e restituita da
+/api/runtime. Testata e pannello mostrano la revisione installata, non l'HEAD
+corrente del repository. Gli ambienti precedenti senza metadato mostrano nel
+pannello l'identificativo immutabile dell'immagine, esplicitamente etichettato.

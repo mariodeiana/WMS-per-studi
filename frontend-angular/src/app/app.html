@@ -1,5 +1,5 @@
 <header class="topbar">
-  <a class="brand" [routerLink]="home(auth.session()?.active?.role)"><span class="brand-mark">W</span><span><strong>WMS @if(environment()) { <span class="environment-badge">{{ environment() }}</span> }</strong><small>Workflow Management System</small></span></a>
+  <a class="brand" [routerLink]="home(auth.session()?.active?.role)"><span class="brand-mark">W</span><span><strong>WMS @if(environment()) { <span class="environment-badge">{{ environment() }}</span> }</strong><small>Workflow Management System @if(revision()) { · Rev. {{revision()}} }</small></span></a>
   @if (auth.session(); as s) {
     <div class="identity"><span>{{ s.user.display_name }}</span>
       <select aria-label="Ruolo attivo" [ngModel]="s.active.id" (ngModelChange)="switchRole($event)" [disabled]="busy()">

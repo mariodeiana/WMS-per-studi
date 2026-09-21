@@ -11,6 +11,9 @@ COPY backend /app/backend
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY frontend /app/frontend
 COPY --from=angular-build /build/dist/frontend-angular/browser /app/frontend-angular/dist/frontend-angular/browser
+ARG WMS_REVISION=non-disponibile
+ENV WMS_REVISION=$WMS_REVISION
+LABEL org.opencontainers.image.revision=$WMS_REVISION
 ENV PYTHONUNBUFFERED=1
 ENV WMS_DATA_DIR=/data
 ENV WMS_FRONTEND=angular

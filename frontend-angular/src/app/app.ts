@@ -6,10 +6,10 @@ import { Auth, home } from './core/auth';
 import { Api, message } from './core/api';
 @Component({ selector: 'app-root', imports: [RouterOutlet, RouterLink, FormsModule], templateUrl: './app.html' })
 export class App {
-  environment = signal('');
+  environment = signal(''); revision = signal('');
   private api = inject(Api);
   auth = inject(Auth); home = home; busy = signal(false); error = signal('');
-  constructor() { void this.api.get<{environment:string}>('/runtime').then(r=>this.environment.set(r.environment)).catch(()=>{}); inject(Router).events.pipe(takeUntilDestroyed()).subscribe(event => { if (event instanceof NavigationError) this.error.set(message(event.error)); }); }
+  constructor() { void this.api.get<{environment:string;revision?:string}>('/runtime').then(r=>{this.environment.set(r.environment);this.revision.set(r.revision || 'non disponibile');}).catch(()=>{}); inject(Router).events.pipe(takeUntilDestroyed()).subscribe(event => { if (event instanceof NavigationError) this.error.set(message(event.error)); }); }
   reload() { location.reload(); }
   async switchRole(id: string) { await this.run(() => this.auth.switchRole(id)); }
   async logout() { await this.run(() => this.auth.logout()); }
