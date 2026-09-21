@@ -15,7 +15,7 @@ services:
       retries: 20
     restart: unless-stopped
   wms-test:
-    image: asc-wms:test-revision-20260922
+    image: asc-wms:1.4.2-r1
     env_file:
       - /opt/asc/wms/secrets/test-database.env
     networks:
