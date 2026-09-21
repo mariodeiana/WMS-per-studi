@@ -7,6 +7,7 @@ from urllib.parse import parse_qs,unquote,urlparse,quote
 from backend.wms_core.models import NonConformity,UserRole
 from backend.wms_core.workflow import WorkflowError,define_corrective_action
 from backend.wms_web.auth import SessionRegistry
+from backend.wms_web.version import VERSION, REVISION
 from backend.wms_web.model_drafts import ModelDraftStore
 from backend.wms_web.admin_config import AdminConfigStore
 from backend.wms_web.database import Database
@@ -33,7 +34,7 @@ class WMSRequestHandler(BaseHTTPRequestHandler):
  def do_GET(self):
   parsed=urlparse(self.path);path=parsed.path;query=parse_qs(parsed.query)
   if path=="/api/health":self._json({"status":"ok"});return
-  if path=="/api/runtime":self._json({"debug":bool(self.debug_mode),"environment":WMS_ENV,"revision":os.environ.get("WMS_REVISION","non disponibile"),"frontend":FRONTEND_MODE,"persistence":"postgresql" if DATABASE and DATABASE.postgres else "legacy"});return
+  if path=="/api/runtime":self._json({"debug":bool(self.debug_mode),"environment":WMS_ENV,"version":VERSION,"revision":REVISION,"source_revision":os.environ.get("WMS_REVISION","non disponibile"),"frontend":FRONTEND_MODE,"persistence":"postgresql" if DATABASE and DATABASE.postgres else "legacy"});return
   if path=="/api/session":
    try:self._json(self._session())
    except PermissionError as e:self._json({"error":str(e)},401)

@@ -58,11 +58,11 @@ class RevisionPanelTest(unittest.TestCase):
     def test_prefers_revision_from_running_application(self):
         from unittest.mock import MagicMock
         response=MagicMock()
-        response.__enter__.return_value.read.return_value=b'{"revision":"abc1234"}'
+        response.__enter__.return_value.read.return_value=b'{"version":"1.4.2","revision":1,"source_revision":"abc1234"}'
         with patch.object(panel,'urlopen',return_value=response), patch.object(panel,'docker') as docker:
-            self.assertEqual(panel.application_revision('asc-wms-test',8001),'abc1234')
+            self.assertEqual(panel.application_revision('asc-wms-test',8001),'Versione 1.4.2 · Revisione 1')
             docker.assert_not_called()
 
-    def test_old_or_unavailable_application_uses_immutable_image(self):
+    def test_old_or_unavailable_application_does_not_show_technical_id(self):
         with patch.object(panel,'urlopen',side_effect=OSError()), patch.object(panel,'docker',return_value=result('sha256:0123456789abcdef')):
-            self.assertEqual(panel.application_revision('asc-wms-dev',8000),'immagine 0123456789ab')
+            self.assertEqual(panel.application_revision('asc-wms-dev',8000),'Versione non rilevata')

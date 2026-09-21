@@ -37,18 +37,13 @@ def docker(*args):
 def application_revision(container, port):
     try:
         with urlopen(f'http://127.0.0.1:{port}/api/runtime', timeout=2) as response:
-            revision = json.load(response).get('revision')
-            if revision and revision not in ('non disponibile','non-disponibile'):
-                return str(revision)
+            runtime = json.load(response)
+            version, revision = runtime.get('version'), runtime.get('revision')
+            if version and isinstance(revision, int):
+                return f'Versione {version} · Revisione {revision}'
     except (OSError, ValueError):
         pass
-    try:
-        image = docker('inspect', '-f', '{{.Image}}', container)
-        if image.returncode == 0 and image.stdout.strip():
-            return 'immagine ' + image.stdout.strip().removeprefix('sha256:')[:12]
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return 'non disponibile'
+    return 'Versione non rilevata'
 
 
 def status():
@@ -288,8 +283,8 @@ class Handler(BaseHTTPRequestHandler):
               <h2>{env}</h2>
               <div class="status">{info['status'].upper()}</div>
               <p>Porta {info['port']}</p>
-              <p><a href="http://192.168.11.10:{info['port']}" target="_blank" rel="noopener">Apri {env} · Rev. {escape(info['revision'])}</a></p>
-              <button onclick="restart('{env}')">Riavvia {env} · Rev. {escape(info['revision'])}</button>
+              <p><a href="http://192.168.11.10:{info['port']}" target="_blank" rel="noopener">Apri {env} · {escape(info['revision'])}</a></p>
+              <button onclick="restart('{env}')">Riavvia {env} · {escape(info['revision'])}</button>
               {extra}
             </section>
             """)

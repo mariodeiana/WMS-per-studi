@@ -100,3 +100,14 @@ La revisione è incorporata nell'immagine tramite WMS_REVISION e restituita da
 /api/runtime. Testata e pannello mostrano la revisione installata, non l'HEAD
 corrente del repository. Gli ambienti precedenti senza metadato mostrano nel
 pannello l'identificativo immutabile dell'immagine, esplicitamente etichettato.
+
+
+## Versione leggibile
+
+Dal rilascio 1.4.2 revisione 1, backend/wms_web/version.py definisce VERSION e
+REVISION per la testata e i pulsanti del pannello. Aggiornare questi valori per
+i rilasci successivi. /api/runtime restituisce version e revision separati;
+source_revision mantiene il riferimento tecnico al sorgente, non mostrato nei
+pulsanti. Gli ambienti precedenti mostrano Versione non rilevata: non si ricava
+una versione commerciale dal nome o dall'identificativo dell'immagine.
+Questa convenzione sostituisce la precedente visualizzazione dei codici Git.
