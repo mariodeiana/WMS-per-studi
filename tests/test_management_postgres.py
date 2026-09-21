@@ -52,3 +52,17 @@ class PostgresPanelTest(unittest.TestCase):
                 with self.assertRaises(RuntimeError):panel.restart_postgres()
                 docker.assert_not_called()
         finally:panel.POSTGRES_RESTART_LOCK.release()
+
+
+class RevisionPanelTest(unittest.TestCase):
+    def test_prefers_revision_from_running_application(self):
+        from unittest.mock import MagicMock
+        response=MagicMock()
+        response.__enter__.return_value.read.return_value=b'{"revision":"abc1234"}'
+        with patch.object(panel,'urlopen',return_value=response), patch.object(panel,'docker') as docker:
+            self.assertEqual(panel.application_revision('asc-wms-test',8001),'abc1234')
+            docker.assert_not_called()
+
+    def test_old_or_unavailable_application_uses_immutable_image(self):
+        with patch.object(panel,'urlopen',side_effect=OSError()), patch.object(panel,'docker',return_value=result('sha256:0123456789abcdef')):
+            self.assertEqual(panel.application_revision('asc-wms-dev',8000),'immagine 0123456789ab')
