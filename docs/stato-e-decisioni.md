@@ -93,3 +93,11 @@ dal motore con risultato VALIDATION, autore, data, note ed evidenze. Il nodo apr
 la sua sezione operativa e mostra stato e ultimo risultato; INIZIO e FINE soltanto
 sono simboli convenzionali. Rilascio TEST: asc-wms:test-validation-20260922.
 Verificati 55 test Angular; nessuna modifica a schema o regole di autorizzazione.
+
+## Stato successivo all'allineamento
+
+Il 22 settembre, su richiesta esplicita, DEV e PROD sono stati portati alla
+stessa Versione 1.4.2 Revisione 1 di TEST e inizializzati dallo snapshot TEST.
+Ora tutti e tre usano PostgreSQL separati. Le precedenti note DEV/PROD legacy
+descrivono lo stato storico. Percorsi, backup e ripristino sono documentati in
+operazioni-server.md. Non è configurata replica continua.

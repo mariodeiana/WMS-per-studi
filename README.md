@@ -12,9 +12,9 @@ Leggere [AGENTS.md](AGENTS.md) prima di operare.
 
 | Ambiente | Indirizzo | Persistenza verificata il 22 settembre 2026 |
 |---|---|---|
-| DEV | http://192.168.11.10:8000 | Legacy |
+| DEV | http://192.168.11.10:8000 | PostgreSQL 17 dedicato |
 | TEST | http://192.168.11.10:8001 | PostgreSQL 17 dedicato |
-| PROD | http://192.168.11.10:8002 | Legacy |
+| PROD | http://192.168.11.10:8002 | PostgreSQL 17 dedicato |
 | Pannello di sistema | http://192.168.11.10:8004 | Stato, riavvii e procedure legacy |
 
 Repository sul server: /opt/asc/wms/WMS-per-studi.

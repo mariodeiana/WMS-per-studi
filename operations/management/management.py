@@ -322,7 +322,7 @@ hr{{border:0;border-top:1px solid #dde4e0;margin:20px 0}}
 <section class="card database-card">
 <h2>PostgreSQL · WMS TEST</h2>
 <p id="pg-state" role="status">Controllo in corso…</p>
-<p>Database dedicato a TEST. DEV e PROD usano ancora la persistenza precedente.</p>
+<p>Database dedicato a TEST. DEV e PROD hanno ciascuno un PostgreSQL indipendente.</p>
 <button id="pg-restart" onclick="restartPostgres()">Riavvia PostgreSQL TEST</button>
 <button onclick="refreshPostgres()">Aggiorna misure</button>
 <p class="backup">Il riavvio sospende brevemente WMS TEST e lo riavvia per ristabilire la connessione.</p>

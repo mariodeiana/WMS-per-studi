@@ -1,0 +1,94 @@
+{
+  "services": {
+    "wms-dev-postgres": {
+      "image": "postgres:17",
+      "container_name": "asc-wms-dev-postgres",
+      "env_file": [
+        "/opt/asc/wms/secrets/dev-postgres.env"
+      ],
+      "volumes": [
+        "wms-dev-postgres-data:/var/lib/postgresql/data"
+      ],
+      "networks": [
+        "wms-dev-db"
+      ],
+      "restart": "unless-stopped",
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -U wms_dev -d wms_dev"
+        ],
+        "interval": "3s",
+        "timeout": "3s",
+        "retries": 20
+      }
+    },
+    "wms-dev": {
+      "image": "asc-wms:1.4.2-r1",
+      "env_file": [
+        "/opt/asc/wms/secrets/dev-database.env"
+      ],
+      "networks": [
+        "wms-dev-db"
+      ],
+      "depends_on": {
+        "wms-dev-postgres": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "wms-prod-postgres": {
+      "image": "postgres:17",
+      "container_name": "asc-wms-prod-postgres",
+      "env_file": [
+        "/opt/asc/wms/secrets/prod-postgres.env"
+      ],
+      "volumes": [
+        "wms-prod-postgres-data:/var/lib/postgresql/data"
+      ],
+      "networks": [
+        "wms-prod-db"
+      ],
+      "restart": "unless-stopped",
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -U wms_prod -d wms_prod"
+        ],
+        "interval": "3s",
+        "timeout": "3s",
+        "retries": 20
+      }
+    },
+    "wms-prod": {
+      "image": "asc-wms:1.4.2-r1",
+      "env_file": [
+        "/opt/asc/wms/secrets/prod-database.env"
+      ],
+      "networks": [
+        "wms-prod-db"
+      ],
+      "depends_on": {
+        "wms-prod-postgres": {
+          "condition": "service_healthy"
+        }
+      }
+    }
+  },
+  "networks": {
+    "wms-dev-db": {
+      "name": "asc-wms-dev-db"
+    },
+    "wms-prod-db": {
+      "name": "asc-wms-prod-db"
+    }
+  },
+  "volumes": {
+    "wms-dev-postgres-data": {
+      "name": "asc-wms-dev-postgres-data"
+    },
+    "wms-prod-postgres-data": {
+      "name": "asc-wms-prod-postgres-data"
+    }
+  }
+}
